@@ -7,13 +7,12 @@ from typing import List, Tuple
 import time
 
 # ============================================================================
-# PARTS DATABASE CONFIGURATION
+# PARTS DATABASE CONFIGURATION - READY TO DEPLOY
 # ============================================================================
-PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/pub?output=csv"
+PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/export?format=csv"
 
-# You can also add multiple databases for different categories if needed:
-# BRAKE_PARTS_URL = "your_brake_parts_csv_url_here" 
-# HYDRAULIC_PARTS_URL = "your_hydraulic_parts_csv_url_here"
+# ✅ Your Google Sheets URL is embedded and ready to use!
+# Technicians will see a clean interface with no configuration needed.
 # ============================================================================
 
 # Configure Streamlit page
