@@ -7,12 +7,12 @@ from typing import List, Tuple
 import time
 
 # ============================================================================
-# CONFIGURATION - UPDATE THIS URL WITH YOUR GOOGLE SHEETS CSV URL
+# PARTS DATABASE CONFIGURATION
 # ============================================================================
-PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/pubhtml"
+PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/export?format=csv"
 
-# You can also add multiple databases for different categories:
-# BRAKE_PARTS_URL = "your_brake_parts_csv_url_here"
+# You can also add multiple databases for different categories if needed:
+# BRAKE_PARTS_URL = "your_brake_parts_csv_url_here" 
 # HYDRAULIC_PARTS_URL = "your_hydraulic_parts_csv_url_here"
 # ============================================================================
 
@@ -174,21 +174,23 @@ st.markdown("""
 def load_parts_database() -> pd.DataFrame:
     """Load parts data from the configured Google Sheets URL."""
     
-    # Check if URL is configured
-    if PARTS_DATABASE_URL == "PASTE_YOUR_GOOGLE_SHEETS_CSV_URL_HERE":
-        st.error("🚨 **Configuration Required**: Please update the PARTS_DATABASE_URL in the code with your Google Sheets CSV URL.")
-        st.info("Contact your system administrator to configure the parts database.")
-        return pd.DataFrame()
-    
     try:
         # Load data from Google Sheets
         response = requests.get(PARTS_DATABASE_URL, timeout=15)
         response.raise_for_status()
         
-        # Parse CSV content
+        # Parse CSV content with robust error handling
         from io import StringIO
         csv_content = StringIO(response.text)
-        df = pd.read_csv(csv_content)
+        
+        # Try parsing with different CSV options for better compatibility
+        try:
+            df = pd.read_csv(csv_content, quotechar='"', skipinitialspace=True)
+        except:
+            # If that fails, try with more lenient parsing
+            csv_content = StringIO(response.text)
+            df = pd.read_csv(csv_content, quotechar='"', skipinitialspace=True, 
+                           on_bad_lines='skip', engine='python')
         
         # Validate required columns
         required_columns = ['part_number', 'description']
@@ -212,6 +214,27 @@ def load_parts_database() -> pd.DataFrame:
     except requests.exceptions.RequestException as e:
         st.error(f"❌ Unable to connect to parts database. Please try again later.")
         st.error(f"Technical details: {str(e)}")
+        return pd.DataFrame()
+    except pd.errors.ParserError as e:
+        st.error(f"❌ Error parsing CSV data from Google Sheets:")
+        st.error(f"**Problem:** {str(e)}")
+        st.info("""
+        **How to fix:**
+        1. Check your Google Sheet for commas in part descriptions
+        2. Replace commas with dashes or spaces
+        3. Example: Change "Brake Pad, Heavy Duty" to "Brake Pad - Heavy Duty"
+        4. Make sure you only have 2 columns: part_number and description
+        """)
+        
+        # Show raw CSV data for debugging
+        with st.expander("🔍 Debug: Show raw CSV data (first 10 lines)"):
+            try:
+                response = requests.get(PARTS_DATABASE_URL, timeout=15)
+                lines = response.text.split('\n')[:10]
+                for i, line in enumerate(lines):
+                    st.text(f"Line {i+1}: {line}")
+            except:
+                st.text("Could not fetch raw data")
         return pd.DataFrame()
     except Exception as e:
         st.error(f"❌ Error loading parts database: {str(e)}")
