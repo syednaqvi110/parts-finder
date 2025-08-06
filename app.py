@@ -9,7 +9,7 @@ import time
 # ============================================================================
 # PARTS DATABASE CONFIGURATION
 # ============================================================================
-PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/export?format=csv"
+PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/pubhtml"
 
 # You can also add multiple databases for different categories if needed:
 # BRAKE_PARTS_URL = "your_brake_parts_csv_url_here" 
