@@ -11,7 +11,7 @@ import time
 # ============================================================================
 PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/pub?output=csv"
 
-# ✅ Your Google Sheets URL is embedded and ready to use!
+# ✅ Your actual Google Sheets CSV URL is embedded and ready to use!
 # Technicians will see a clean interface with no configuration needed.
 # ============================================================================
 
@@ -245,7 +245,7 @@ def create_searchable_text(row) -> str:
 
 def smart_search(query: str, df: pd.DataFrame, max_results: int = 50) -> List[Tuple]:
     """
-    Perform intelligent search on parts database.
+    Perform optimized intelligent search on parts database.
     Returns list of tuples: (index, part_number, description, score)
     """
     if not query.strip() or df.empty:
@@ -257,48 +257,93 @@ def smart_search(query: str, df: pd.DataFrame, max_results: int = 50) -> List[Tu
     # Create searchable text for each part
     df['searchable'] = df.apply(create_searchable_text, axis=1)
     
-    # Method 1: Fuzzy matching for overall similarity
-    choices = df['searchable'].tolist()
-    fuzzy_results = process.extract(
-        query, 
-        choices, 
-        scorer=fuzz.WRatio,
-        limit=min(max_results * 2, len(choices))
-    )
-    
-    # Add fuzzy results with minimum score threshold
-    for match_text, score, index in fuzzy_results:
-        if score >= 35:  # Minimum relevance threshold
-            results.append((
-                index,
-                df.iloc[index]['part_number'],
-                df.iloc[index]['description'],
-                score
-            ))
-    
-    # Method 2: Boost exact part number matches
+    # Method 1: EXACT MATCHES get highest priority (100 points)
     for idx, row in df.iterrows():
         part_num = row['part_number'].lower()
-        # Exact match in part number gets highest priority
-        if query in part_num or part_num.startswith(query):
-            existing = next((r for r in results if r[0] == idx), None)
-            if existing:
-                # Boost existing score
-                results = [(i, pn, desc, min(100, score + 25)) if i == idx 
-                          else (i, pn, desc, score) for i, pn, desc, score in results]
+        desc_lower = row['description'].lower()
+        
+        # Exact part number match
+        if query == part_num:
+            results.append((idx, row['part_number'], row['description'], 100))
+        # Part number starts with query
+        elif part_num.startswith(query):
+            results.append((idx, row['part_number'], row['description'], 95))
+        # Query is contained in part number as whole segment
+        elif query in part_num:
+            # Check if it's a whole segment (not breaking up words)
+            if query in part_num.split('-') or query in part_num.split('_'):
+                results.append((idx, row['part_number'], row['description'], 90))
             else:
-                results.append((idx, row['part_number'], row['description'], 98))
+                results.append((idx, row['part_number'], row['description'], 85))
     
-    # Method 3: Boost keyword matches in description
-    query_words = [word for word in query.split() if len(word) > 2]
-    for word in query_words:
-        for idx, row in df.iterrows():
-            desc_lower = row['description'].lower()
-            if word in desc_lower.split():  # Whole word match
-                existing = next((r for r in results if r[0] == idx), None)
-                if existing:
-                    results = [(i, pn, desc, min(100, score + 10)) if i == idx 
-                              else (i, pn, desc, score) for i, pn, desc, score in results]
+    # Method 2: WORD-BOUNDARY MATCHES (80-85 points)
+    query_words = query.split()
+    for idx, row in df.iterrows():
+        if any(r[0] == idx for r in results):  # Skip if already found
+            continue
+            
+        part_words = re.split(r'[-_\s]+', row['part_number'].lower())
+        desc_words = row['description'].lower().split()
+        
+        # Check for exact word matches
+        exact_word_matches = 0
+        partial_word_matches = 0
+        
+        for query_word in query_words:
+            # Exact word match in part number
+            if query_word in part_words:
+                exact_word_matches += 2
+            # Exact word match in description
+            elif query_word in desc_words:
+                exact_word_matches += 1
+            # Partial match (but be more strict)
+            elif any(word.startswith(query_word) or query_word in word for word in part_words + desc_words):
+                partial_word_matches += 1
+        
+        if exact_word_matches > 0:
+            score = min(85, 70 + (exact_word_matches * 5))
+            results.append((idx, row['part_number'], row['description'], score))
+        elif partial_word_matches >= len(query_words):  # All query words found partially
+            score = min(75, 60 + (partial_word_matches * 3))
+            results.append((idx, row['part_number'], row['description'], score))
+    
+    # Method 3: FUZZY MATCHING for typos and similar words (40-70 points)
+    remaining_indices = set(range(len(df))) - {r[0] for r in results}
+    if remaining_indices and len(query) > 2:
+        remaining_texts = [df.iloc[i]['searchable'] for i in remaining_indices]
+        fuzzy_results = process.extract(
+            query, 
+            remaining_texts, 
+            scorer=fuzz.WRatio,
+            limit=min(max_results, len(remaining_texts))
+        )
+        
+        for match_text, score, rel_index in fuzzy_results:
+            if score >= 45:  # Higher threshold for fuzzy matching
+                actual_index = list(remaining_indices)[rel_index]
+                # Scale fuzzy scores to 40-70 range
+                adjusted_score = min(70, 40 + (score - 45) * 30 / 55)
+                results.append((
+                    actual_index,
+                    df.iloc[actual_index]['part_number'],
+                    df.iloc[actual_index]['description'],
+                    int(adjusted_score)
+                ))
+    
+    # Method 4: BOOST for multiple query word matches
+    if len(query_words) > 1:
+        for i, (idx, part_num, desc, score) in enumerate(results):
+            found_words = 0
+            search_text = f"{part_num} {desc}".lower()
+            
+            for word in query_words:
+                if word in search_text:
+                    found_words += 1
+            
+            # Boost score based on how many query words were found
+            if found_words > 1:
+                boost = (found_words - 1) * 5
+                results[i] = (idx, part_num, desc, min(100, score + boost))
     
     # Sort by score (highest first) and remove duplicates
     seen = set()
@@ -332,9 +377,9 @@ def display_search_results(results: List[Tuple], query: str):
             <h3>🔍 No parts found</h3>
             <p>Try different keywords, check spelling, or use part numbers</p>
             <p><strong>Search tips:</strong></p>
-            <p>• Use part numbers: "BRK-001"</p>
-            <p>• Use keywords: "brake pad"</p>
-            <p>• Try abbreviations: "hyd cyl"</p>
+            <p>• Use exact part numbers: "SPM-001" (not "SP M")</p>
+            <p>• Use complete words: "brake" not "brk"</p>
+            <p>• Try different abbreviations: "hyd" for hydraulic</p>
         </div>
         """, unsafe_allow_html=True)
         return
@@ -346,34 +391,123 @@ def display_search_results(results: List[Tuple], query: str):
     </div>
     """, unsafe_allow_html=True)
     
+    # JavaScript for clipboard functionality
+    st.markdown("""
+    <script>
+    function copyToClipboard(text, buttonId) {
+        // Try using the modern clipboard API
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(function() {
+                showCopySuccess(buttonId, text);
+            }).catch(function() {
+                fallbackCopyTextToClipboard(text, buttonId);
+            });
+        } else {
+            // Fallback for older browsers or non-HTTPS
+            fallbackCopyTextToClipboard(text, buttonId);
+        }
+    }
+    
+    function fallbackCopyTextToClipboard(text, buttonId) {
+        var textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            var successful = document.execCommand('copy');
+            if (successful) {
+                showCopySuccess(buttonId, text);
+            } else {
+                showCopyError(buttonId);
+            }
+        } catch (err) {
+            showCopyError(buttonId);
+        }
+        
+        document.body.removeChild(textArea);
+    }
+    
+    function showCopySuccess(buttonId, text) {
+        var button = document.getElementById(buttonId);
+        if (button) {
+            var originalText = button.innerHTML;
+            button.innerHTML = '✅ Copied!';
+            button.style.background = '#28a745';
+            
+            // Show copied text in the app
+            var event = new CustomEvent('streamlit:setComponentValue', {
+                detail: { value: 'Copied: ' + text }
+            });
+            window.parent.document.dispatchEvent(event);
+            
+            setTimeout(function() {
+                button.innerHTML = originalText;
+                button.style.background = '#1e3c72';
+            }, 2000);
+        }
+    }
+    
+    function showCopyError(buttonId) {
+        var button = document.getElementById(buttonId);
+        if (button) {
+            var originalText = button.innerHTML;
+            button.innerHTML = '❌ Failed';
+            button.style.background = '#dc3545';
+            
+            setTimeout(function() {
+                button.innerHTML = originalText;
+                button.style.background = '#1e3c72';
+            }, 2000);
+        }
+    }
+    </script>
+    """, unsafe_allow_html=True)
+    
     # Display each result
     for idx, (_, part_num, description, score) in enumerate(results):
         score_class = "score-excellent" if score >= 80 else "score-good" if score >= 60 else "score-fair"
         score_text = "Excellent Match" if score >= 80 else "Good Match" if score >= 60 else "Partial Match"
         
-        # Create result card
-        col1, col2 = st.columns([4, 1])
+        # Create result card with working copy button
+        highlighted_part = highlight_matches(part_num, query)
+        highlighted_desc = highlight_matches(description, query)
         
-        with col1:
-            # Highlight matches
-            highlighted_part = highlight_matches(part_num, query)
-            highlighted_desc = highlight_matches(description, query)
-            
-            st.markdown(f"""
-            <div class="result-item">
-                <div class="part-number">{highlighted_part}</div>
-                <div class="description">{highlighted_desc}</div>
-                <div class="result-footer">
-                    <span class="match-score {score_class}">{score_text} ({score}%)</span>
+        button_id = f"copy_btn_{idx}"
+        
+        st.markdown(f"""
+        <div class="result-item">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div style="flex: 1;">
+                    <div class="part-number">{highlighted_part}</div>
+                    <div class="description">{highlighted_desc}</div>
+                    <div class="result-footer">
+                        <span class="match-score {score_class}">{score_text} ({score}%)</span>
+                    </div>
+                </div>
+                <div style="margin-left: 15px;">
+                    <button 
+                        id="{button_id}"
+                        onclick="copyToClipboard('{part_num}', '{button_id}')"
+                        class="copy-btn"
+                        style="background: #1e3c72; color: white; border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; font-size: 14px;"
+                    >
+                        📋 Copy
+                    </button>
                 </div>
             </div>
-            """, unsafe_allow_html=True)
+        </div>
+        """, unsafe_allow_html=True)
         
-        with col2:
-            # Copy button
-            if st.button("📋 Copy", key=f"copy_{idx}", help=f"Copy {part_num}", use_container_width=True):
-                st.success(f"✅ Copied: **{part_num}**")
-                # In a real deployment, this would copy to clipboard via JavaScript
+        # Add spacing between results
+        if idx < len(results) - 1:
+            st.markdown("<br>", unsafe_allow_html=True)
 
 def main():
     """Main application interface."""
