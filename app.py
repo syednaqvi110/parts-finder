@@ -151,46 +151,13 @@ def main():
     # Title (Google style)
     st.markdown("<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>🔧 Parts Finder</h1>", unsafe_allow_html=True)
     
-    # Search box (Google style) - proper focus handling
+    # Search box (Google style)
     search_query = st.text_input(
         label="Search",
         placeholder="Search parts...",
         label_visibility="collapsed",
         key="search_input"
     )
-    
-    # Force blur (lose focus) after Enter is pressed
-    st.markdown("""
-    <script>
-    function setupGoogleStyleSearch() {
-        // Find the input element
-        const input = window.parent.document.querySelector('input[placeholder*="Search"]') || 
-                     window.parent.document.querySelector('.stTextInput input') ||
-                     window.parent.document.querySelector('input[type="text"]');
-        
-        if (input && !input.hasEventListener) {
-            input.hasEventListener = true;
-            
-            input.addEventListener('keydown', function(e) {
-                if (e.key === 'Enter' || e.keyCode === 13) {
-                    // Immediately blur (lose focus) - this hides cursor and keyboard
-                    setTimeout(() => {
-                        this.blur();
-                        // Make sure it really loses focus
-                        document.activeElement?.blur();
-                        window.parent.document.activeElement?.blur();
-                    }, 50);
-                }
-            });
-        }
-    }
-    
-    // Try multiple times to catch the input
-    setTimeout(setupGoogleStyleSearch, 100);
-    setTimeout(setupGoogleStyleSearch, 500);
-    setTimeout(setupGoogleStyleSearch, 1000);
-    </script>
-    """, unsafe_allow_html=True)
     
     # Show results if searching
     if search_query and not df.empty:
