@@ -5,7 +5,7 @@ from rapidfuzz import fuzz, process
 import re
 from typing import List, Tuple
 import time
-  
+
 # ============================================================================
 # PARTS DATABASE CONFIGURATION - READY TO DEPLOY
 # ============================================================================
@@ -23,143 +23,14 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for professional look
+# Custom CSS for minimal styling
 st.markdown("""
 <style>
-    .main-header {
-        text-align: center;
-        padding: 2rem 0;
-        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
-        color: white;
-        margin: -1rem -1rem 2rem -1rem;
-        border-radius: 0 0 15px 15px;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-    }
-    
-    .search-container {
-        background: #f8f9fa;
-        padding: 2rem;
-        border-radius: 15px;
-        margin-bottom: 2rem;
-        border: 1px solid #e9ecef;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    }
-    
-    .result-item {
-        background: white;
-        padding: 1.5rem;
-        border-radius: 10px;
-        border: 1px solid #e9ecef;
-        margin-bottom: 1rem;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        transition: transform 0.2s, box-shadow 0.2s;
-    }
-    
-    .result-item:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-    }
-    
-    .part-number {
-        font-family: 'Courier New', monospace;
-        font-weight: bold;
-        color: #1e3c72;
-        font-size: 1.2em;
-        margin-bottom: 0.5rem;
-    }
-    
-    .description {
-        color: #555;
-        font-size: 1.1em;
-        line-height: 1.4;
-        margin-bottom: 1rem;
-    }
-    
-    .result-footer {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-    }
-    
-    .match-score {
-        font-weight: bold;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.9em;
-    }
-    
-    .score-excellent { 
-        background: #d4edda;
-        color: #155724;
-        border: 1px solid #c3e6cb;
-    }
-    .score-good { 
-        background: #fff3cd;
-        color: #856404;
-        border: 1px solid #ffeaa7;
-    }
-    .score-fair { 
-        background: #f8d7da;
-        color: #721c24;
-        border: 1px solid #f5c6cb;
-    }
-    
     .highlight {
-        background: linear-gradient(120deg, #a2d2ff 0%, #bde0ff 100%);
+        background-color: #fff3cd;
         padding: 2px 4px;
-        border-radius: 4px;
+        border-radius: 3px;
         font-weight: bold;
-    }
-    
-    .stats-row {
-        background: #e8f4fd;
-        padding: 1rem;
-        border-radius: 10px;
-        margin: 1rem 0;
-        text-align: center;
-    }
-    
-    .copy-btn {
-        background: #1e3c72 !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
-        padding: 0.5rem 1rem !important;
-        font-size: 0.9em !important;
-        cursor: pointer !important;
-        transition: background 0.2s !important;
-    }
-    
-    .copy-btn:hover {
-        background: #2a5298 !important;
-        transform: translateY(-1px);
-    }
-    
-    .search-input {
-        font-size: 1.2em !important;
-        padding: 1rem !important;
-        border-radius: 10px !important;
-        border: 2px solid #dee2e6 !important;
-    }
-    
-    .search-input:focus {
-        border-color: #1e3c72 !important;
-        box-shadow: 0 0 0 0.2rem rgba(30, 60, 114, 0.25) !important;
-    }
-    
-    .no-results {
-        text-align: center;
-        padding: 3rem;
-        color: #6c757d;
-        background: #f8f9fa;
-        border-radius: 15px;
-        border: 2px dashed #dee2e6;
-    }
-    
-    .loading-spinner {
-        text-align: center;
-        padding: 2rem;
-        color: #1e3c72;
     }
     
     /* Hide Streamlit branding */
@@ -512,11 +383,10 @@ def display_search_results(results: List[Tuple], query: str):
 def main():
     """Main application interface."""
     
-    # Header
+    # Simple header
     st.markdown("""
     <div class="main-header">
         <h1>🔧 Parts Finder</h1>
-        <p style="margin: 0; opacity: 0.9; font-size: 1.1em;">Find parts instantly with smart search</p>
     </div>
     """, unsafe_allow_html=True)
     
