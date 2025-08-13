@@ -151,26 +151,76 @@ def main():
     # Title (Google style)
     st.markdown("<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>🔧 Parts Finder</h1>", unsafe_allow_html=True)
     
-    # Search box (Google style)
-    search_query = st.text_input(
-        label="Search",
-        placeholder="Search parts...",
-        label_visibility="collapsed"
-    )
+    # Search box (Google style) - try form approach for better mobile handling
+    with st.form(key="search_form", clear_on_submit=False):
+        search_query = st.text_input(
+            label="Search",
+            placeholder="Search parts...",
+            label_visibility="collapsed",
+            key="search_input"
+        )
+        
+        # Hidden submit button (Enter will trigger this)
+        submitted = st.form_submit_button("Search", type="primary")
+        
+        # Style the submit button to be invisible
+        st.markdown("""
+        <style>
+        .stFormSubmitButton button {
+            display: none !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
     
-    # Mobile keyboard handling
+    # Mobile keyboard handling (improved)
     st.markdown("""
     <script>
-    setTimeout(function() {
-        const inputs = window.parent.document.querySelectorAll('input[type="text"]');
-        inputs.forEach(function(input) {
+    function hideKeyboardOnEnter() {
+        // Try multiple methods to find and handle the input
+        const attempts = [
+            () => window.parent.document.querySelector('input[type="text"]'),
+            () => document.querySelector('input[type="text"]'),
+            () => window.parent.document.querySelector('.stTextInput input'),
+            () => document.querySelector('.stTextInput input'),
+            () => window.parent.document.querySelector('input[placeholder*="Search"]'),
+            () => document.querySelector('input[placeholder*="Search"]')
+        ];
+        
+        let input = null;
+        for (let attempt of attempts) {
+            try {
+                input = attempt();
+                if (input) break;
+            } catch (e) {
+                continue;
+            }
+        }
+        
+        if (input) {
             input.addEventListener('keypress', function(e) {
-                if (e.key === 'Enter') {
+                if (e.key === 'Enter' || e.keyCode === 13) {
+                    // Force blur to hide keyboard
                     this.blur();
+                    // Additional mobile-specific methods
+                    try {
+                        this.setAttribute('readonly', 'readonly');
+                        setTimeout(() => {
+                            this.removeAttribute('readonly');
+                        }, 100);
+                    } catch (e) {}
                 }
             });
-        });
-    }, 1000);
+        }
+    }
+    
+    // Try multiple times with different delays
+    setTimeout(hideKeyboardOnEnter, 500);
+    setTimeout(hideKeyboardOnEnter, 1000);
+    setTimeout(hideKeyboardOnEnter, 2000);
+    
+    // Also try when page loads
+    document.addEventListener('DOMContentLoaded', hideKeyboardOnEnter);
+    window.addEventListener('load', hideKeyboardOnEnter);
     </script>
     """, unsafe_allow_html=True)
     
