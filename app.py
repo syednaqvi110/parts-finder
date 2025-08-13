@@ -151,76 +151,44 @@ def main():
     # Title (Google style)
     st.markdown("<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>🔧 Parts Finder</h1>", unsafe_allow_html=True)
     
-    # Search box (Google style) - try form approach for better mobile handling
-    with st.form(key="search_form", clear_on_submit=False):
-        search_query = st.text_input(
-            label="Search",
-            placeholder="Search parts...",
-            label_visibility="collapsed",
-            key="search_input"
-        )
-        
-        # Hidden submit button (Enter will trigger this)
-        submitted = st.form_submit_button("Search", type="primary")
-        
-        # Style the submit button to be invisible
-        st.markdown("""
-        <style>
-        .stFormSubmitButton button {
-            display: none !important;
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    # Search box (Google style) - proper focus handling
+    search_query = st.text_input(
+        label="Search",
+        placeholder="Search parts...",
+        label_visibility="collapsed",
+        key="search_input"
+    )
     
-    # Mobile keyboard handling (improved)
+    # Force blur (lose focus) after Enter is pressed
     st.markdown("""
     <script>
-    function hideKeyboardOnEnter() {
-        // Try multiple methods to find and handle the input
-        const attempts = [
-            () => window.parent.document.querySelector('input[type="text"]'),
-            () => document.querySelector('input[type="text"]'),
-            () => window.parent.document.querySelector('.stTextInput input'),
-            () => document.querySelector('.stTextInput input'),
-            () => window.parent.document.querySelector('input[placeholder*="Search"]'),
-            () => document.querySelector('input[placeholder*="Search"]')
-        ];
+    function setupGoogleStyleSearch() {
+        // Find the input element
+        const input = window.parent.document.querySelector('input[placeholder*="Search"]') || 
+                     window.parent.document.querySelector('.stTextInput input') ||
+                     window.parent.document.querySelector('input[type="text"]');
         
-        let input = null;
-        for (let attempt of attempts) {
-            try {
-                input = attempt();
-                if (input) break;
-            } catch (e) {
-                continue;
-            }
-        }
-        
-        if (input) {
-            input.addEventListener('keypress', function(e) {
+        if (input && !input.hasEventListener) {
+            input.hasEventListener = true;
+            
+            input.addEventListener('keydown', function(e) {
                 if (e.key === 'Enter' || e.keyCode === 13) {
-                    // Force blur to hide keyboard
-                    this.blur();
-                    // Additional mobile-specific methods
-                    try {
-                        this.setAttribute('readonly', 'readonly');
-                        setTimeout(() => {
-                            this.removeAttribute('readonly');
-                        }, 100);
-                    } catch (e) {}
+                    // Immediately blur (lose focus) - this hides cursor and keyboard
+                    setTimeout(() => {
+                        this.blur();
+                        // Make sure it really loses focus
+                        document.activeElement?.blur();
+                        window.parent.document.activeElement?.blur();
+                    }, 50);
                 }
             });
         }
     }
     
-    // Try multiple times with different delays
-    setTimeout(hideKeyboardOnEnter, 500);
-    setTimeout(hideKeyboardOnEnter, 1000);
-    setTimeout(hideKeyboardOnEnter, 2000);
-    
-    // Also try when page loads
-    document.addEventListener('DOMContentLoaded', hideKeyboardOnEnter);
-    window.addEventListener('load', hideKeyboardOnEnter);
+    // Try multiple times to catch the input
+    setTimeout(setupGoogleStyleSearch, 100);
+    setTimeout(setupGoogleStyleSearch, 500);
+    setTimeout(setupGoogleStyleSearch, 1000);
     </script>
     """, unsafe_allow_html=True)
     
