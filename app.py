@@ -4,230 +4,129 @@ import requests
 from rapidfuzz import fuzz, process
 import re
 from typing import List, Tuple
-import time
 
 # ============================================================================
 # PARTS DATABASE CONFIGURATION - READY TO DEPLOY
 # ============================================================================
 PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/pub?output=csv"
 
-# ✅ Your actual Google Sheets CSV URL is embedded and ready to use!
-# Technicians will see a clean interface with no configuration needed.
-# ============================================================================
-
 # Configure Streamlit page
 st.set_page_config(
-    page_title="🔧 Parts Finder",
+    page_title="Parts Finder",
     page_icon="🔧",
-    layout="wide",
-    initial_sidebar_state="collapsed"
+    layout="centered"
 )
 
-# Custom CSS for minimal styling
+# Hide all Streamlit UI elements
 st.markdown("""
 <style>
-    .highlight {
-        background-color: #fff3cd;
-        padding: 2px 4px;
-        border-radius: 3px;
-        font-weight: bold;
-    }
-    
-    /* Hide Streamlit branding */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    header {visibility: hidden;}
     .stDeployButton {display:none;}
+    .stDecoration {display:none;}
+    
+    .highlight {
+        background-color: #fff3cd;
+        font-weight: bold;
+    }
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data(ttl=300)  # Cache for 5 minutes
+@st.cache_data(ttl=300)
 def load_parts_database() -> pd.DataFrame:
-    """Load parts data from the configured Google Sheets URL."""
-    
+    """Load parts data from Google Sheets."""
     try:
-        # Load data from Google Sheets
         response = requests.get(PARTS_DATABASE_URL, timeout=15)
         response.raise_for_status()
         
-        # Parse CSV content with robust error handling
         from io import StringIO
         csv_content = StringIO(response.text)
         
-        # Try parsing with different CSV options for better compatibility
         try:
             df = pd.read_csv(csv_content, quotechar='"', skipinitialspace=True)
         except:
-            # If that fails, try with more lenient parsing
             csv_content = StringIO(response.text)
             df = pd.read_csv(csv_content, quotechar='"', skipinitialspace=True, 
                            on_bad_lines='skip', engine='python')
         
-        # Validate required columns
         required_columns = ['part_number', 'description']
         missing_columns = [col for col in required_columns if col not in df.columns]
         
         if missing_columns:
-            st.error(f"❌ Database error: Missing required columns: {', '.join(missing_columns)}")
             return pd.DataFrame()
         
-        # Clean the data
         df['part_number'] = df['part_number'].astype(str).str.strip()
         df['description'] = df['description'].astype(str).str.strip()
-        
-        # Remove empty rows
         df = df.dropna(subset=['part_number', 'description'])
         df = df[df['part_number'].str.len() > 0]
         df = df[df['description'].str.len() > 0]
         
         return df.reset_index(drop=True)
         
-    except requests.exceptions.RequestException as e:
-        st.error(f"❌ Unable to connect to parts database. Please try again later.")
-        st.error(f"Technical details: {str(e)}")
+    except:
         return pd.DataFrame()
-    except pd.errors.ParserError as e:
-        st.error(f"❌ Error parsing CSV data from Google Sheets:")
-        st.error(f"**Problem:** {str(e)}")
-        st.info("""
-        **How to fix:**
-        1. Check your Google Sheet for commas in part descriptions
-        2. Replace commas with dashes or spaces
-        3. Example: Change "Brake Pad, Heavy Duty" to "Brake Pad - Heavy Duty"
-        4. Make sure you only have 2 columns: part_number and description
-        """)
-        
-        # Show raw CSV data for debugging
-        with st.expander("🔍 Debug: Show raw CSV data (first 10 lines)"):
-            try:
-                response = requests.get(PARTS_DATABASE_URL, timeout=15)
-                lines = response.text.split('\n')[:10]
-                for i, line in enumerate(lines):
-                    st.text(f"Line {i+1}: {line}")
-            except:
-                st.text("Could not fetch raw data")
-        return pd.DataFrame()
-    except Exception as e:
-        st.error(f"❌ Error loading parts database: {str(e)}")
-        return pd.DataFrame()
-
-def create_searchable_text(row) -> str:
-    """Combine part number and description for better searching."""
-    return f"{row['part_number']} {row['description']}".lower()
 
 def smart_search(query: str, df: pd.DataFrame, max_results: int = 50) -> List[Tuple]:
-    """
-    Perform optimized intelligent search on parts database.
-    Returns list of tuples: (index, part_number, description, score)
-    """
+    """Search parts database."""
     if not query.strip() or df.empty:
         return []
     
     query = query.lower().strip()
     results = []
     
-    # Create searchable text for each part
-    df['searchable'] = df.apply(create_searchable_text, axis=1)
-    
-    # Method 1: EXACT MATCHES get highest priority (100 points)
+    # Exact matches first
     for idx, row in df.iterrows():
         part_num = row['part_number'].lower()
         desc_lower = row['description'].lower()
         
-        # Exact part number match
         if query == part_num:
             results.append((idx, row['part_number'], row['description'], 100))
-        # Part number starts with query
         elif part_num.startswith(query):
             results.append((idx, row['part_number'], row['description'], 95))
-        # Query is contained in part number as whole segment
         elif query in part_num:
-            # Check if it's a whole segment (not breaking up words)
-            if query in part_num.split('-') or query in part_num.split('_'):
-                results.append((idx, row['part_number'], row['description'], 90))
-            else:
-                results.append((idx, row['part_number'], row['description'], 85))
+            results.append((idx, row['part_number'], row['description'], 90))
     
-    # Method 2: WORD-BOUNDARY MATCHES (80-85 points)
+    # Word matches
     query_words = query.split()
     for idx, row in df.iterrows():
-        if any(r[0] == idx for r in results):  # Skip if already found
+        if any(r[0] == idx for r in results):
             continue
             
         part_words = re.split(r'[-_\s]+', row['part_number'].lower())
         desc_words = row['description'].lower().split()
         
-        # Check for exact word matches
-        exact_word_matches = 0
-        partial_word_matches = 0
-        
+        exact_matches = 0
         for query_word in query_words:
-            # Exact word match in part number
             if query_word in part_words:
-                exact_word_matches += 2
-            # Exact word match in description
+                exact_matches += 2
             elif query_word in desc_words:
-                exact_word_matches += 1
-            # Partial match (but be more strict)
-            elif any(word.startswith(query_word) or query_word in word for word in part_words + desc_words):
-                partial_word_matches += 1
+                exact_matches += 1
         
-        if exact_word_matches > 0:
-            score = min(85, 70 + (exact_word_matches * 5))
-            results.append((idx, row['part_number'], row['description'], score))
-        elif partial_word_matches >= len(query_words):  # All query words found partially
-            score = min(75, 60 + (partial_word_matches * 3))
+        if exact_matches > 0:
+            score = min(85, 70 + (exact_matches * 5))
             results.append((idx, row['part_number'], row['description'], score))
     
-    # Method 3: FUZZY MATCHING for typos and similar words (40-70 points)
+    # Fuzzy matches
     remaining_indices = set(range(len(df))) - {r[0] for r in results}
     if remaining_indices and len(query) > 2:
-        remaining_texts = [df.iloc[i]['searchable'] for i in remaining_indices]
-        fuzzy_results = process.extract(
-            query, 
-            remaining_texts, 
-            scorer=fuzz.WRatio,
-            limit=min(max_results, len(remaining_texts))
-        )
+        df['searchable'] = df['part_number'] + ' ' + df['description']
+        remaining_texts = [df.iloc[i]['searchable'].lower() for i in remaining_indices]
+        fuzzy_results = process.extract(query, remaining_texts, scorer=fuzz.WRatio, limit=20)
         
         for match_text, score, rel_index in fuzzy_results:
-            if score >= 45:  # Higher threshold for fuzzy matching
+            if score >= 45:
                 actual_index = list(remaining_indices)[rel_index]
-                # Scale fuzzy scores to 40-70 range
                 adjusted_score = min(70, 40 + (score - 45) * 30 / 55)
-                results.append((
-                    actual_index,
-                    df.iloc[actual_index]['part_number'],
-                    df.iloc[actual_index]['description'],
-                    int(adjusted_score)
-                ))
+                results.append((actual_index, df.iloc[actual_index]['part_number'], 
+                              df.iloc[actual_index]['description'], int(adjusted_score)))
     
-    # Method 4: BOOST for multiple query word matches
-    if len(query_words) > 1:
-        for i, (idx, part_num, desc, score) in enumerate(results):
-            found_words = 0
-            search_text = f"{part_num} {desc}".lower()
-            
-            for word in query_words:
-                if word in search_text:
-                    found_words += 1
-            
-            # Boost score based on how many query words were found
-            if found_words > 1:
-                boost = (found_words - 1) * 5
-                results[i] = (idx, part_num, desc, min(100, score + boost))
-    
-    # Sort by score (highest first) and remove duplicates
-    seen = set()
-    unique_results = []
-    for result in sorted(results, key=lambda x: x[3], reverse=True):
-        if result[0] not in seen:
-            seen.add(result[0])
-            unique_results.append(result)
-    
-    return unique_results[:max_results]
+    # Sort and return
+    results.sort(key=lambda x: x[3], reverse=True)
+    return results[:max_results]
 
 def highlight_matches(text: str, query: str) -> str:
-    """Highlight matching terms in the text."""
+    """Highlight matching terms."""
     if not query.strip():
         return text
     
@@ -240,237 +139,54 @@ def highlight_matches(text: str, query: str) -> str:
     
     return highlighted
 
-def display_search_results(results: List[Tuple], query: str):
-    """Display search results in a clean, professional format."""
-    if not results:
-        st.markdown("""
-        <div class="no-results">
-            <h3>🔍 No parts found</h3>
-            <p>Try different keywords, check spelling, or use part numbers</p>
-            <p><strong>Search tips:</strong></p>
-            <p>• Use exact part numbers: "SPM-001" (not "SP M")</p>
-            <p>• Use complete words: "brake" not "brk"</p>
-            <p>• Try different abbreviations: "hyd" for hydraulic</p>
-        </div>
-        """, unsafe_allow_html=True)
-        return
-    
-    # Results summary
-    st.markdown(f"""
-    <div class="stats-row">
-        <strong>✅ Found {len(results)} matching parts</strong>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # JavaScript for clipboard functionality
-    st.markdown("""
-    <script>
-    function copyToClipboard(text, buttonId) {
-        // Try using the modern clipboard API
-        if (navigator.clipboard && window.isSecureContext) {
-            navigator.clipboard.writeText(text).then(function() {
-                showCopySuccess(buttonId, text);
-            }).catch(function() {
-                fallbackCopyTextToClipboard(text, buttonId);
-            });
-        } else {
-            // Fallback for older browsers or non-HTTPS
-            fallbackCopyTextToClipboard(text, buttonId);
-        }
-    }
-    
-    function fallbackCopyTextToClipboard(text, buttonId) {
-        var textArea = document.createElement("textarea");
-        textArea.value = text;
-        textArea.style.top = "0";
-        textArea.style.left = "0";
-        textArea.style.position = "fixed";
-        textArea.style.opacity = "0";
-        
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        
-        try {
-            var successful = document.execCommand('copy');
-            if (successful) {
-                showCopySuccess(buttonId, text);
-            } else {
-                showCopyError(buttonId);
-            }
-        } catch (err) {
-            showCopyError(buttonId);
-        }
-        
-        document.body.removeChild(textArea);
-    }
-    
-    function showCopySuccess(buttonId, text) {
-        var button = document.getElementById(buttonId);
-        if (button) {
-            var originalText = button.innerHTML;
-            button.innerHTML = '✅ Copied!';
-            button.style.background = '#28a745';
-            
-            // Show copied text in the app
-            var event = new CustomEvent('streamlit:setComponentValue', {
-                detail: { value: 'Copied: ' + text }
-            });
-            window.parent.document.dispatchEvent(event);
-            
-            setTimeout(function() {
-                button.innerHTML = originalText;
-                button.style.background = '#1e3c72';
-            }, 2000);
-        }
-    }
-    
-    function showCopyError(buttonId) {
-        var button = document.getElementById(buttonId);
-        if (button) {
-            var originalText = button.innerHTML;
-            button.innerHTML = '❌ Failed';
-            button.style.background = '#dc3545';
-            
-            setTimeout(function() {
-                button.innerHTML = originalText;
-                button.style.background = '#1e3c72';
-            }, 2000);
-        }
-    }
-    </script>
-    """, unsafe_allow_html=True)
-    
-    # Display each result
-    for idx, (_, part_num, description, score) in enumerate(results):
-        score_class = "score-excellent" if score >= 80 else "score-good" if score >= 60 else "score-fair"
-        score_text = "Excellent Match" if score >= 80 else "Good Match" if score >= 60 else "Partial Match"
-        
-        # Create result card with working copy button
-        highlighted_part = highlight_matches(part_num, query)
-        highlighted_desc = highlight_matches(description, query)
-        
-        button_id = f"copy_btn_{idx}"
-        
-        st.markdown(f"""
-        <div class="result-item">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-                <div style="flex: 1;">
-                    <div class="part-number">{highlighted_part}</div>
-                    <div class="description">{highlighted_desc}</div>
-                    <div class="result-footer">
-                        <span class="match-score {score_class}">{score_text} ({score}%)</span>
-                    </div>
-                </div>
-                <div style="margin-left: 15px;">
-                    <button 
-                        id="{button_id}"
-                        onclick="copyToClipboard('{part_num}', '{button_id}')"
-                        class="copy-btn"
-                        style="background: #1e3c72; color: white; border: none; border-radius: 8px; padding: 8px 16px; cursor: pointer; font-size: 14px;"
-                    >
-                        📋 Copy
-                    </button>
-                </div>
-            </div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Add spacing between results
-        if idx < len(results) - 1:
-            st.markdown("<br>", unsafe_allow_html=True)
-
 def main():
-    """Main application interface."""
+    """Google-style minimal interface."""
     
-    # Simple header
-    st.markdown("""
-    <div class="main-header">
-        <h1>🔧 Parts Finder</h1>
-    </div>
-    """, unsafe_allow_html=True)
+    # Load data silently
+    df = load_parts_database()
     
-    # Load parts database
-    with st.spinner("🔄 Loading parts database..."):
-        df = load_parts_database()
+    # Center everything
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
     
-    # If database load failed, show error and stop
-    if df.empty:
-        st.stop()
+    # Title (Google style)
+    st.markdown("<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>🔧 Parts Finder</h1>", unsafe_allow_html=True)
     
-    # Database loaded successfully - show search interface
-    st.markdown('<div class="search-container">', unsafe_allow_html=True)
-    
-    # Search input (prominently displayed)
+    # Search box (Google style)
     search_query = st.text_input(
         label="Search",
-        placeholder="🔍 Type part number, description, or keywords...",
-        help="Examples: 'BRK-001', 'brake pad', 'hydraulic cylinder', 'M8 bolt'",
-        key="search_input",
+        placeholder="Search parts...",
         label_visibility="collapsed"
     )
     
-    # Quick stats about database
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("📦 Total Parts", f"{len(df):,}")
-    with col2:
-        st.metric("🔄 Last Updated", "Real-time")
-    with col3:
-        st.metric("⚡ Status", "Online")
+    # Mobile keyboard handling
+    st.markdown("""
+    <script>
+    setTimeout(function() {
+        const inputs = window.parent.document.querySelectorAll('input[type="text"]');
+        inputs.forEach(function(input) {
+            input.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') {
+                    this.blur();
+                }
+            });
+        });
+    }, 1000);
+    </script>
+    """, unsafe_allow_html=True)
     
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Perform search if query provided
-    if search_query:
-        search_start = time.time()
+    # Show results if searching
+    if search_query and not df.empty:
+        results = smart_search(search_query, df, max_results=50)
         
-        # Show loading for better UX
-        with st.spinner("🔍 Searching parts..."):
-            results = smart_search(search_query, df, max_results=50)
-        
-        search_time = time.time() - search_start
-        
-        # Display results
-        display_search_results(results, search_query)
-        
-        # Show search performance
         if results:
-            st.caption(f"⚡ Search completed in {search_time:.2f} seconds")
-    
-    else:
-        # Show helpful information when no search query
-        st.markdown("""
-        ### 💡 How to Search
-        
-        **By Part Number:**
-        - Full number: `BRK-001-A`
-        - Partial: `BRK` (shows all brake parts)
-        
-        **By Description:**
-        - Keywords: `brake pad`, `air filter`, `hydraulic`
-        - Materials: `stainless steel`, `rubber`
-        - Sizes: `M8`, `1/2 inch`, `50mm`
-        
-        **Smart Features:**
-        - ✅ Handles typos automatically
-        - ✅ Finds partial matches
-        - ✅ Searches all text fields
-        - ✅ Ranks results by relevance
-        """)
-        
-        # Show sample of available parts
-        if len(df) > 0:
-            st.markdown("### 📋 Sample Parts")
-            sample_df = df.head(8)[['part_number', 'description']]
-            
-            # Display sample in a nice format
-            for _, row in sample_df.iterrows():
-                col1, col2 = st.columns([1, 3])
-                with col1:
-                    st.code(row['part_number'])
-                with col2:
-                    st.write(row['description'])
+            st.markdown("<br>", unsafe_allow_html=True)
+            for _, part_num, description, _ in results:
+                highlighted_part = highlight_matches(part_num, search_query)
+                highlighted_desc = highlight_matches(description, search_query)
+                
+                st.markdown(f"**{highlighted_part}**", unsafe_allow_html=True)
+                st.markdown(highlighted_desc, unsafe_allow_html=True)
+                st.markdown("<br>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
