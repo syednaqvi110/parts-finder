@@ -1,24 +1,5 @@
-# Core Streamlit and web framework
+# Simple requirements for Parts Finder
 streamlit>=1.28.0
-
-# Data processing and analysis
 pandas>=1.5.0
-
-# Search and text processing
 rapidfuzz>=3.0.0
-
-# HTTP requests and data fetching
 requests>=2.25.0
-
-# Additional utilities for enhanced functionality
-python-dotenv>=1.0.0  # Environment variable management
-
-# Development and testing (optional)
-pytest>=7.0.0
-pytest-cov>=4.0.0
-
-# Logging and monitoring (optional)
-structlog>=23.0.0
-
-# Performance optimization (optional)
-numba>=0.58.0  # JIT compilation for performance-critical search operations
