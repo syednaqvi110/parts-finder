@@ -1,284 +1,476 @@
 import streamlit as st
+import pandas as pd
+import requests
+from rapidfuzz import fuzz, process
+import re
 import time
-import logging
-from typing import Optional
+from typing import List, Tuple, Dict, Any
+from datetime import datetime
+from io import StringIO
 
-# Import our custom modules
-from config import config
-from data_manager import DataManager
-from search_engine import EnhancedSearchEngine
-from ui_components import UIComponents
+# ============================================================================
+# SIMPLE CONFIGURATION - JUST CHANGE THE URL BELOW
+# ============================================================================
+PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/pub?output=csv"
 
-# Configure logging
-logger = logging.getLogger(__name__)
+# Basic settings (you can adjust these if needed)
+RESULTS_PER_PAGE = 15           # How many results to show per page
+SEARCH_DELAY = 0.3              # Seconds to wait before searching (prevents lag)
+MAX_RESULTS = 100               # Maximum results to find
 
-# Configure Streamlit page
+# ============================================================================
+# STREAMLIT PAGE SETUP
+# ============================================================================
 st.set_page_config(
-    page_title="Parts Finder - Smart Parts Search",
+    page_title="Parts Finder",
     page_icon="🔧",
-    layout="centered",
-    initial_sidebar_state="collapsed"
+    layout="centered"
 )
 
-class PartsFinderApp:
-    """Main Parts Finder application class."""
+# Custom CSS for better appearance
+st.markdown("""
+<style>
+    /* Hide Streamlit branding */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    .stDeployButton {display:none;}
+    .stDecoration {display:none;}
     
-    def __init__(self):
-        self.config = config
-        self.data_manager = DataManager(self.config)
-        self.search_engine = EnhancedSearchEngine(self.config)
-        self.ui = UIComponents()
-        
-        # Validate configuration
-        if not self.config.validate():
-            st.error("❌ Invalid configuration. Please check your environment variables.")
-            st.stop()
+    /* Search result highlighting */
+    .highlight {
+        background-color: #fff3cd;
+        font-weight: bold;
+        padding: 1px 2px;
+        border-radius: 2px;
+    }
     
-    def run(self):
-        """Main application entry point."""
-        try:
-            # Initialize session state
-            self.ui.init_session_state()
-            
-            # Render custom CSS
-            self.ui.render_custom_css()
-            
-            # Load data with error handling
-            df, data_metadata = self._load_data_with_status()
-            
-            # Render main interface
-            self._render_main_interface(df, data_metadata)
-            
-            # Render admin panel if needed
-            if st.sidebar.checkbox("🔧 Admin Panel"):
-                self.ui.render_admin_panel(self.data_manager, self.search_engine)
-        
-        except Exception as e:
-            logger.error(f"Application error: {str(e)}")
-            self.ui.show_error_message(
-                f"Application error: {str(e)}. Please refresh the page or contact support.",
-                "error"
-            )
+    /* Result styling */
+    .search-result {
+        border-left: 4px solid #1f77b4;
+        padding: 15px;
+        margin: 10px 0;
+        background-color: #f8f9fa;
+        border-radius: 0 8px 8px 0;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
     
-    def _load_data_with_status(self):
-        """Load data and show loading status."""
-        with st.spinner("Loading parts database..."):
-            df, metadata = self.data_manager.load_parts_database()
-        
-        # Show data status
-        self.ui.render_data_status(metadata)
-        
-        return df, metadata
+    .part-number {
+        font-size: 1.2em;
+        font-weight: bold;
+        color: #1f77b4;
+        margin-bottom: 8px;
+    }
     
-    def _render_main_interface(self, df, data_metadata):
-        """Render the main search interface."""
-        # Header
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown(
-            "<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>🔧 Parts Finder</h1>", 
-            unsafe_allow_html=True
-        )
-        
-        # Search section
-        self._render_search_section(df)
-        
-        # Show data quality info if available
-        if data_metadata.get('data_quality'):
-            with st.expander("📊 Data Quality Info"):
-                quality = data_metadata['data_quality']
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.metric("Total Parts", f"{quality.get('total_parts', 0):,}")
-                with col2:
-                    st.metric("Unique Parts", f"{quality.get('unique_part_numbers', 0):,}")
-                with col3:
-                    avg_desc_len = quality.get('avg_description_length', 0)
-                    st.metric("Avg Description Length", f"{avg_desc_len:.0f} chars")
+    .part-description {
+        color: #333;
+        line-height: 1.4;
+        font-size: 1.05em;
+    }
     
-    def _render_search_section(self, df):
-        """Render the search input and results section."""
-        # Search input with debouncing
-        search_query = st.text_input(
-            label="Search",
-            placeholder="Enter part number or description...",
-            value=st.session_state.get('search_query', ''),
-            label_visibility="collapsed",
-            key="search_input_field",
-            help="Search for parts by number or description. Use partial matches for broader results."
-        )
-        
-        # Update session state if query changed
-        if search_query != st.session_state.get('search_query', ''):
-            st.session_state.search_query = search_query
-            st.session_state.current_page = 1  # Reset to first page on new search
-        
-        # Show recent searches if no query
-        if not search_query.strip():
-            recent_searches = self.search_engine.get_recent_searches()
-            if recent_searches:
-                st.markdown("<br>", unsafe_allow_html=True)
-                self.ui.render_recent_searches(recent_searches)
-            return
-        
-        # Handle empty data
-        if df.empty:
-            if data_metadata := getattr(self, '_last_data_metadata', None):
-                if data_metadata.get('error'):
-                    self.ui.show_error_message(
-                        "Cannot search: Data is not available. Please check your internet connection and try again.",
-                        "error"
-                    )
-            return
-        
-        # Show search suggestions for partial queries
-        if len(search_query.strip()) >= 2:
-            suggestions = self.search_engine.get_search_suggestions(search_query)
-            if suggestions:
-                with st.expander("💡 Search Suggestions", expanded=False):
-                    self.ui.render_search_suggestions(suggestions, search_query)
-        
-        # Perform search with debouncing for better UX
-        self._perform_search_with_debouncing(search_query, df)
+    /* Error and info messages */
+    .error-box {
+        background-color: #f8d7da;
+        color: #721c24;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #f5c6cb;
+        margin: 15px 0;
+    }
     
-    def _perform_search_with_debouncing(self, query: str, df):
-        """Perform search with debouncing to avoid too many requests."""
-        # Skip very short queries
-        if len(query.strip()) < self.config.min_search_length:
-            self.ui.show_error_message(
-                f"Please enter at least {self.config.min_search_length} character(s) to search.",
-                "info"
-            )
-            return
-        
-        # Show loading state for longer queries
-        if len(query) > 3:
-            with st.spinner("Searching..."):
-                time.sleep(0.1)  # Brief pause for UI feedback
-                self._execute_search(query, df)
-        else:
-            self._execute_search(query, df)
+    .info-box {
+        background-color: #d1ecf1;
+        color: #0c5460;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #bee5eb;
+        margin: 15px 0;
+    }
     
-    def _execute_search(self, query: str, df):
-        """Execute the actual search and display results."""
-        try:
-            current_page = st.session_state.get('current_page', 1)
-            
-            # Perform search
-            results, search_metadata = self.search_engine.search(query, df, current_page)
-            
-            # Show search statistics
-            if search_metadata.get('total_results', 0) > 0:
-                self.ui.render_search_stats(search_metadata)
-            
-            # Handle no results
-            if not results:
-                no_result_suggestions = self.search_engine.get_search_suggestions(query)
-                self.ui.show_no_results_message(query, no_result_suggestions)
-                return
-            
-            # Render pagination controls (top)
-            if search_metadata.get('pages', 0) > 1:
-                st.markdown("<br>", unsafe_allow_html=True)
-                new_page = self.ui.render_pagination(
-                    current_page, 
-                    search_metadata['pages'], 
-                    "top_pagination"
-                )
-                if new_page != current_page:
-                    st.session_state.current_page = new_page
-                    st.rerun()
-            
-            # Render search results
-            st.markdown("<br>", unsafe_allow_html=True)
-            self._render_search_results(results, query)
-            
-            # Render pagination controls (bottom)
-            if search_metadata.get('pages', 0) > 1:
-                st.markdown("<br>", unsafe_allow_html=True)
-                new_page = self.ui.render_pagination(
-                    current_page, 
-                    search_metadata['pages'], 
-                    "bottom_pagination"
-                )
-                if new_page != current_page:
-                    st.session_state.current_page = new_page
-                    st.rerun()
-        
-        except Exception as e:
-            logger.error(f"Search error: {str(e)}")
-            self.ui.show_error_message(
-                f"Search error: {str(e)}. Please try a different search term.",
-                "error"
-            )
+    .success-box {
+        background-color: #d4edda;
+        color: #155724;
+        padding: 15px;
+        border-radius: 8px;
+        border: 1px solid #c3e6cb;
+        margin: 15px 0;
+    }
     
-    def _render_search_results(self, results, query):
-        """Render the search results list."""
-        for idx, (_, part_number, description, score) in enumerate(results):
-            with st.container():
-                # Add some debug info in development
-                if st.sidebar.checkbox("🐛 Debug Mode") and score:
-                    debug_info = f" (Score: {score})"
-                    part_number_display = f"{part_number}{debug_info}"
-                else:
-                    part_number_display = part_number
-                
-                # Render individual result
-                self.ui.render_search_result(
-                    part_number_display, 
-                    description, 
-                    query, 
-                    self.search_engine
-                )
-                
-                # Add copy buttons for easy access
-                col1, col2 = st.columns([3, 1])
-                with col2:
-                    if st.button("📋 Copy", key=f"copy_{idx}_{part_number}", help="Copy part number"):
-                        st.write(f"Part number copied: `{part_number}`")
+    /* Loading spinner */
+    .loading {
+        text-align: center;
+        padding: 20px;
+        color: #6c757d;
+    }
     
-    def _handle_keyboard_navigation(self):
-        """Handle keyboard navigation (future enhancement)."""
-        # This would require JavaScript integration
-        # For now, we'll use Streamlit's built-in navigation
-        pass
+    /* Recent searches */
+    .recent-search {
+        display: inline-block;
+        background-color: #e9ecef;
+        color: #495057;
+        padding: 6px 12px;
+        margin: 4px;
+        border-radius: 15px;
+        font-size: 0.9em;
+        cursor: pointer;
+        border: 1px solid #dee2e6;
+    }
     
-    def health_check(self) -> dict:
-        """Application health check endpoint."""
-        try:
-            # Check data source
-            data_health = self.data_manager.get_health_status()
-            
-            # Check search functionality
-            test_df = self.data_manager.load_parts_database()[0]
-            search_healthy = not test_df.empty
-            
-            return {
-                'status': 'healthy' if data_health['status'] == 'healthy' and search_healthy else 'degraded',
-                'data_source': data_health,
-                'search_engine': 'healthy' if search_healthy else 'unhealthy',
-                'timestamp': time.time()
-            }
-        except Exception as e:
-            return {
-                'status': 'unhealthy',
-                'error': str(e),
-                'timestamp': time.time()
-            }
+    /* Statistics */
+    .stats {
+        background-color: #f8f9fa;
+        padding: 10px 15px;
+        border-radius: 8px;
+        margin: 10px 0;
+        border: 1px solid #dee2e6;
+        text-align: center;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-def main():
-    """Application entry point."""
+# ============================================================================
+# SESSION STATE SETUP
+# ============================================================================
+if 'search_history' not in st.session_state:
+    st.session_state.search_history = []
+if 'current_page' not in st.session_state:
+    st.session_state.current_page = 1
+if 'last_search' not in st.session_state:
+    st.session_state.last_search = ""
+
+# ============================================================================
+# DATA LOADING FUNCTIONS
+# ============================================================================
+@st.cache_data(ttl=300, show_spinner=False)  # Cache for 5 minutes
+def load_parts_data():
+    """Load parts data from Google Sheets with good error handling."""
     try:
-        # Create and run the application
-        app = PartsFinderApp()
-        app.run()
+        # Try to load the data
+        response = requests.get(PARTS_DATABASE_URL, timeout=15)
+        response.raise_for_status()
         
-    except KeyboardInterrupt:
-        logger.info("Application interrupted by user")
+        if not response.text.strip():
+            return None, "The data source appears to be empty."
+        
+        # Parse the CSV
+        try:
+            df = pd.read_csv(StringIO(response.text), quotechar='"', skipinitialspace=True)
+        except:
+            # Try alternative parsing if the first method fails
+            df = pd.read_csv(StringIO(response.text), on_bad_lines='skip', engine='python')
+        
+        # Check if we have the required columns
+        if 'part_number' not in df.columns or 'description' not in df.columns:
+            # Try to find similar column names
+            df.columns = df.columns.str.strip().str.lower()
+            if 'part_number' not in df.columns:
+                part_cols = [col for col in df.columns if 'part' in col or 'number' in col]
+                if part_cols:
+                    df = df.rename(columns={part_cols[0]: 'part_number'})
+            if 'description' not in df.columns:
+                desc_cols = [col for col in df.columns if 'desc' in col or 'name' in col]
+                if desc_cols:
+                    df = df.rename(columns={desc_cols[0]: 'description'})
+        
+        # Final check for required columns
+        if 'part_number' not in df.columns or 'description' not in df.columns:
+            return None, "The spreadsheet must have 'part_number' and 'description' columns."
+        
+        # Clean the data
+        df['part_number'] = df['part_number'].astype(str).str.strip()
+        df['description'] = df['description'].astype(str).str.strip()
+        df = df.dropna(subset=['part_number', 'description'])
+        df = df[df['part_number'].str.len() > 0]
+        df = df[df['description'].str.len() > 0]
+        df = df[df['part_number'] != 'nan']
+        df = df[df['description'] != 'nan']
+        
+        if df.empty:
+            return None, "No valid parts data found after cleaning."
+        
+        return df.reset_index(drop=True), None
+        
+    except requests.exceptions.Timeout:
+        return None, "Connection timeout. Please check your internet connection and try again."
+    except requests.exceptions.ConnectionError:
+        return None, "Cannot connect to the data source. Please check your internet connection."
+    except requests.exceptions.HTTPError as e:
+        return None, f"Data source error (HTTP {e.response.status_code}). Please check the spreadsheet URL."
     except Exception as e:
-        logger.error(f"Fatal application error: {str(e)}")
-        st.error(f"😞 Fatal application error: {str(e)}")
-        st.error("Please refresh the page or contact support if the problem persists.")
+        return None, f"Error loading data: {str(e)}"
 
+# ============================================================================
+# SEARCH FUNCTIONS
+# ============================================================================
+def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
+    """Advanced search that finds parts even with typos."""
+    if not query.strip() or df.empty:
+        return []
+    
+    query = query.lower().strip()
+    results = []
+    seen_indices = set()
+    
+    # 1. Exact matches (highest priority)
+    for idx, row in df.iterrows():
+        part_num = row['part_number'].lower()
+        desc_lower = row['description'].lower()
+        
+        if query == part_num:
+            results.append((idx, row['part_number'], row['description'], 100))
+            seen_indices.add(idx)
+        elif query == desc_lower:
+            results.append((idx, row['part_number'], row['description'], 95))
+            seen_indices.add(idx)
+    
+    # 2. Starts with query
+    for idx, row in df.iterrows():
+        if idx in seen_indices:
+            continue
+        part_num = row['part_number'].lower()
+        desc_lower = row['description'].lower()
+        
+        if part_num.startswith(query):
+            results.append((idx, row['part_number'], row['description'], 90))
+            seen_indices.add(idx)
+        elif desc_lower.startswith(query):
+            results.append((idx, row['part_number'], row['description'], 85))
+            seen_indices.add(idx)
+    
+    # 3. Contains query
+    for idx, row in df.iterrows():
+        if idx in seen_indices:
+            continue
+        part_num = row['part_number'].lower()
+        desc_lower = row['description'].lower()
+        
+        if query in part_num:
+            results.append((idx, row['part_number'], row['description'], 80))
+            seen_indices.add(idx)
+        elif query in desc_lower:
+            results.append((idx, row['part_number'], row['description'], 75))
+            seen_indices.add(idx)
+    
+    # 4. Word matches
+    query_words = query.split()
+    for idx, row in df.iterrows():
+        if idx in seen_indices or len(query_words) < 2:
+            continue
+        
+        part_words = re.split(r'[-_\s]+', row['part_number'].lower())
+        desc_words = row['description'].lower().split()
+        
+        part_matches = sum(1 for word in query_words if word in part_words)
+        desc_matches = sum(1 for word in query_words if word in desc_words)
+        
+        if part_matches > 0 or desc_matches > 0:
+            score = 60 + (part_matches * 10) + (desc_matches * 5)
+            results.append((idx, row['part_number'], row['description'], min(score, 70)))
+            seen_indices.add(idx)
+    
+    # 5. Fuzzy matches (for typos)
+    if len(query) > 2:
+        remaining_indices = [i for i in range(len(df)) if i not in seen_indices]
+        if remaining_indices:
+            searchable_texts = []
+            for idx in remaining_indices:
+                row = df.iloc[idx]
+                searchable_text = f"{row['part_number']} {row['description']}".lower()
+                searchable_texts.append(searchable_text)
+            
+            fuzzy_results = process.extract(query, searchable_texts, scorer=fuzz.WRatio, limit=20)
+            
+            for match_text, score, rel_index in fuzzy_results:
+                if score >= 60:  # Only include good fuzzy matches
+                    actual_index = remaining_indices[rel_index]
+                    row = df.iloc[actual_index]
+                    adjusted_score = 30 + (score - 60) * 30 / 40  # Scale to 30-60 range
+                    results.append((actual_index, row['part_number'], row['description'], int(adjusted_score)))
+    
+    # Sort by score and return top results
+    results.sort(key=lambda x: x[3], reverse=True)
+    return results[:MAX_RESULTS]
+
+def highlight_text(text: str, query: str) -> str:
+    """Highlight search terms in text."""
+    if not query.strip():
+        return text
+    
+    query_words = [word for word in query.lower().split() if len(word) > 1]
+    highlighted = text
+    
+    for word in query_words:
+        pattern = re.compile(f'({re.escape(word)})', re.IGNORECASE)
+        highlighted = pattern.sub(r'<span class="highlight">\1</span>', highlighted)
+    
+    return highlighted
+
+# ============================================================================
+# UI HELPER FUNCTIONS
+# ============================================================================
+def show_message(message: str, message_type: str = "info"):
+    """Show a styled message to the user."""
+    css_class = f"{message_type}-box"
+    st.markdown(f'<div class="{css_class}">{message}</div>', unsafe_allow_html=True)
+
+def add_to_search_history(query: str):
+    """Add search to history (keep last 10)."""
+    if query and query not in st.session_state.search_history:
+        st.session_state.search_history.insert(0, query)
+        if len(st.session_state.search_history) > 10:
+            st.session_state.search_history.pop()
+
+def show_recent_searches():
+    """Show recent searches as clickable buttons."""
+    if st.session_state.search_history:
+        st.markdown("**Recent searches:**")
+        cols = st.columns(min(len(st.session_state.search_history), 5))
+        for i, search in enumerate(st.session_state.search_history[:5]):
+            col_idx = i % len(cols)
+            with cols[col_idx]:
+                if st.button(f"🕒 {search}", key=f"recent_{i}"):
+                    st.session_state.search_input = search
+                    st.rerun()
+
+def show_search_result(part_number: str, description: str, query: str):
+    """Display a single search result."""
+    highlighted_part = highlight_text(part_number, query)
+    highlighted_desc = highlight_text(description, query)
+    
+    st.markdown(f"""
+    <div class="search-result">
+        <div class="part-number">{highlighted_part}</div>
+        <div class="part-description">{highlighted_desc}</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+def show_pagination(current_page: int, total_pages: int, results_count: int):
+    """Show pagination controls."""
+    if total_pages <= 1:
+        return current_page
+    
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        st.markdown(f"<div class='stats'>Page {current_page} of {total_pages} • {results_count} total results</div>", 
+                   unsafe_allow_html=True)
+        
+        prev_col, next_col = st.columns(2)
+        
+        with prev_col:
+            if current_page > 1:
+                if st.button("← Previous", key="prev_page"):
+                    return current_page - 1
+        
+        with next_col:
+            if current_page < total_pages:
+                if st.button("Next →", key="next_page"):
+                    return current_page + 1
+    
+    return current_page
+
+# ============================================================================
+# MAIN APPLICATION
+# ============================================================================
+def main():
+    """Main application function."""
+    
+    # App title
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>🔧 Parts Finder</h1>", 
+               unsafe_allow_html=True)
+    
+    # Load data
+    with st.spinner("Loading parts database..."):
+        df, error = load_parts_data()
+    
+    # Show data status
+    if error:
+        show_message(f"⚠️ {error}", "error")
+        st.markdown("**Troubleshooting tips:**")
+        st.markdown("1. Check your internet connection")
+        st.markdown("2. Make sure the Google Sheet is published as CSV")
+        st.markdown("3. Verify the sheet has 'part_number' and 'description' columns")
+        return
+    else:
+        show_message(f"✅ Successfully loaded {len(df):,} parts", "success")
+    
+    # Search input
+    search_query = st.text_input(
+        "Search for parts:",
+        placeholder="Enter part number or description...",
+        key="search_input",
+        help="Try typing a part number, description, or even partial matches. The search is smart and handles typos!"
+    )
+    
+    # Show recent searches if no current search
+    if not search_query.strip():
+        show_recent_searches()
+        return
+    
+    # Add delay to prevent too many searches while typing
+    if search_query != st.session_state.last_search:
+        st.session_state.last_search = search_query
+        time.sleep(SEARCH_DELAY)
+    
+    # Perform search
+    start_time = time.time()
+    results = smart_search(search_query, df)
+    search_time = (time.time() - start_time) * 1000
+    
+    # Add to search history
+    add_to_search_history(search_query)
+    
+    # Handle no results
+    if not results:
+        show_message(f"No results found for \"{search_query}\"", "info")
+        st.markdown("**Try:**")
+        st.markdown("• Check spelling")
+        st.markdown("• Use fewer words")
+        st.markdown("• Try partial part numbers")
+        st.markdown("• Use different keywords")
+        return
+    
+    # Calculate pagination
+    total_results = len(results)
+    total_pages = (total_results + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
+    current_page = st.session_state.current_page
+    
+    # Make sure current page is valid
+    if current_page > total_pages:
+        current_page = 1
+        st.session_state.current_page = 1
+    
+    # Show search stats
+    st.markdown(f"<div class='stats'>Found {total_results} results in {search_time:.0f}ms</div>", 
+               unsafe_allow_html=True)
+    
+    # Show pagination controls (top)
+    new_page = show_pagination(current_page, total_pages, total_results)
+    if new_page != current_page:
+        st.session_state.current_page = new_page
+        st.rerun()
+    
+    # Show results for current page
+    start_idx = (current_page - 1) * RESULTS_PER_PAGE
+    end_idx = start_idx + RESULTS_PER_PAGE
+    page_results = results[start_idx:end_idx]
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    
+    for _, part_number, description, score in page_results:
+        show_search_result(part_number, description, search_query)
+    
+    # Show pagination controls (bottom)
+    if total_pages > 1:
+        st.markdown("<br>", unsafe_allow_html=True)
+        new_page = show_pagination(current_page, total_pages, total_results)
+        if new_page != current_page:
+            st.session_state.current_page = new_page
+            st.rerun()
+
+# ============================================================================
+# RUN THE APP
+# ============================================================================
 if __name__ == "__main__":
     main()
