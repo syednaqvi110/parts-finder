@@ -203,13 +203,16 @@ def load_parts_data():
 # SEARCH FUNCTIONS
 # ============================================================================
 def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
-    """Advanced search that finds parts even with typos."""
+    """Smart search that respects part number boundaries and supports partial numbers + keywords."""
     if not query.strip() or df.empty:
         return []
     
     query = query.lower().strip()
     results = []
     seen_indices = set()
+    
+    # Split query into potential part number segments and description words
+    query_words = query.split()
     
     # 1. Exact matches (highest priority)
     for idx, row in df.iterrows():
@@ -223,53 +226,114 @@ def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
             results.append((idx, row['part_number'], row['description'], 95))
             seen_indices.add(idx)
     
-    # 2. Starts with query
+    # 2. Part number starts with query (for single word searches)
+    if len(query_words) == 1:
+        for idx, row in df.iterrows():
+            if idx in seen_indices:
+                continue
+            part_num = row['part_number'].lower()
+            desc_lower = row['description'].lower()
+            
+            if part_num.startswith(query):
+                results.append((idx, row['part_number'], row['description'], 90))
+                seen_indices.add(idx)
+            elif desc_lower.startswith(query):
+                results.append((idx, row['part_number'], row['description'], 85))
+                seen_indices.add(idx)
+    
+    # 3. Smart part number segment matching (respects boundaries)
     for idx, row in df.iterrows():
         if idx in seen_indices:
             continue
+        
         part_num = row['part_number'].lower()
-        desc_lower = row['description'].lower()
+        # Split part number by common separators (space, hyphen, underscore, period)
+        part_segments = re.split(r'[-_\s\.]+', part_num)
+        part_segments = [seg for seg in part_segments if seg]  # Remove empty segments
         
-        if part_num.startswith(query):
-            results.append((idx, row['part_number'], row['description'], 90))
-            seen_indices.add(idx)
-        elif desc_lower.startswith(query):
-            results.append((idx, row['part_number'], row['description'], 85))
-            seen_indices.add(idx)
+        # For single word queries, check if it matches any complete segment or starts/ends a segment
+        if len(query_words) == 1:
+            query_word = query_words[0]
+            segment_match = False
+            
+            for segment in part_segments:
+                # Exact segment match
+                if query_word == segment:
+                    results.append((idx, row['part_number'], row['description'], 82))
+                    seen_indices.add(idx)
+                    segment_match = True
+                    break
+                # Segment starts with query (like "892" matching "8926abc")
+                elif segment.startswith(query_word) and len(query_word) >= 3:
+                    results.append((idx, row['part_number'], row['description'], 78))
+                    seen_indices.add(idx)
+                    segment_match = True
+                    break
+                # Segment ends with query (like "926" matching "abc926")
+                elif segment.endswith(query_word) and len(query_word) >= 3:
+                    results.append((idx, row['part_number'], row['description'], 76))
+                    seen_indices.add(idx)
+                    segment_match = True
+                    break
+            
+            # Also check description for single word
+            if not segment_match:
+                desc_words = row['description'].lower().split()
+                for desc_word in desc_words:
+                    if query_word in desc_word:
+                        results.append((idx, row['part_number'], row['description'], 72))
+                        seen_indices.add(idx)
+                        break
     
-    # 3. Contains query
-    for idx, row in df.iterrows():
-        if idx in seen_indices:
-            continue
-        part_num = row['part_number'].lower()
-        desc_lower = row['description'].lower()
-        
-        if query in part_num:
-            results.append((idx, row['part_number'], row['description'], 80))
-            seen_indices.add(idx)
-        elif query in desc_lower:
-            results.append((idx, row['part_number'], row['description'], 75))
-            seen_indices.add(idx)
+    # 4. Multi-word search: partial part number + description keywords
+    if len(query_words) > 1:
+        for idx, row in df.iterrows():
+            if idx in seen_indices:
+                continue
+            
+            part_num = row['part_number'].lower()
+            desc_lower = row['description'].lower()
+            part_segments = re.split(r'[-_\s\.]+', part_num)
+            part_segments = [seg for seg in part_segments if seg]
+            desc_words = desc_lower.split()
+            
+            part_number_matches = 0
+            description_matches = 0
+            
+            for query_word in query_words:
+                # Check if this word matches part number segments
+                part_word_matched = False
+                for segment in part_segments:
+                    if (segment == query_word or 
+                        (len(query_word) >= 3 and segment.startswith(query_word)) or
+                        (len(query_word) >= 3 and segment.endswith(query_word))):
+                        part_number_matches += 1
+                        part_word_matched = True
+                        break
+                
+                # If not matched in part number, check description
+                if not part_word_matched:
+                    for desc_word in desc_words:
+                        if query_word in desc_word:
+                            description_matches += 1
+                            break
+            
+            # Score based on matches
+            if part_number_matches > 0 or description_matches > 0:
+                # Prefer combinations of part number + description matches
+                if part_number_matches > 0 and description_matches > 0:
+                    score = 80 + (part_number_matches * 5) + (description_matches * 3)
+                elif part_number_matches > 0:
+                    score = 70 + (part_number_matches * 5)
+                else:
+                    score = 65 + (description_matches * 3)
+                
+                score = min(score, 85)  # Cap the score
+                results.append((idx, row['part_number'], row['description'], score))
+                seen_indices.add(idx)
     
-    # 4. Word matches
-    query_words = query.split()
-    for idx, row in df.iterrows():
-        if idx in seen_indices or len(query_words) < 2:
-            continue
-        
-        part_words = re.split(r'[-_\s]+', row['part_number'].lower())
-        desc_words = row['description'].lower().split()
-        
-        part_matches = sum(1 for word in query_words if word in part_words)
-        desc_matches = sum(1 for word in query_words if word in desc_words)
-        
-        if part_matches > 0 or desc_matches > 0:
-            score = 60 + (part_matches * 10) + (desc_matches * 5)
-            results.append((idx, row['part_number'], row['description'], min(score, 70)))
-            seen_indices.add(idx)
-    
-    # 5. Fuzzy matches (for typos)
-    if len(query) > 2:
+    # 5. Fuzzy matches (for typos, but only if we don't have many good matches)
+    if len(results) < 10 and len(query) > 2:
         remaining_indices = [i for i in range(len(df)) if i not in seen_indices]
         if remaining_indices:
             searchable_texts = []
@@ -278,13 +342,13 @@ def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
                 searchable_text = f"{row['part_number']} {row['description']}".lower()
                 searchable_texts.append(searchable_text)
             
-            fuzzy_results = process.extract(query, searchable_texts, scorer=fuzz.WRatio, limit=20)
+            fuzzy_results = process.extract(query, searchable_texts, scorer=fuzz.WRatio, limit=15)
             
             for match_text, score, rel_index in fuzzy_results:
-                if score >= 60:  # Only include good fuzzy matches
+                if score >= 65:  # Higher threshold for fuzzy matches
                     actual_index = remaining_indices[rel_index]
                     row = df.iloc[actual_index]
-                    adjusted_score = 30 + (score - 60) * 30 / 40  # Scale to 30-60 range
+                    adjusted_score = 25 + (score - 65) * 25 / 35  # Scale to 25-50 range
                     results.append((actual_index, row['part_number'], row['description'], int(adjusted_score)))
     
     # Sort by score and return top results
