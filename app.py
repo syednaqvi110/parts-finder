@@ -344,7 +344,7 @@ def show_search_result(part_number: str, description: str, query: str):
     </div>
     """, unsafe_allow_html=True)
 
-def show_pagination(current_page: int, total_pages: int, results_count: int):
+def show_pagination(current_page: int, total_pages: int, results_count: int, position: str = ""):
     """Show pagination controls."""
     if total_pages <= 1:
         return current_page
@@ -359,12 +359,12 @@ def show_pagination(current_page: int, total_pages: int, results_count: int):
         
         with prev_col:
             if current_page > 1:
-                if st.button("← Previous", key="prev_page"):
+                if st.button("← Previous", key=f"prev_page_{position}"):
                     return current_page - 1
         
         with next_col:
             if current_page < total_pages:
-                if st.button("Next →", key="next_page"):
+                if st.button("Next →", key=f"next_page_{position}"):
                     return current_page + 1
     
     return current_page
@@ -414,9 +414,7 @@ def main():
         time.sleep(SEARCH_DELAY)
     
     # Perform search
-    start_time = time.time()
     results = smart_search(search_query, df)
-    search_time = (time.time() - start_time) * 1000
     
     # Add to search history
     add_to_search_history(search_query)
@@ -441,12 +439,8 @@ def main():
         current_page = 1
         st.session_state.current_page = 1
     
-    # Show search stats
-    st.markdown(f"<div class='stats'>Found {total_results} results in {search_time:.0f}ms</div>", 
-               unsafe_allow_html=True)
-    
     # Show pagination controls (top)
-    new_page = show_pagination(current_page, total_pages, total_results)
+    new_page = show_pagination(current_page, total_pages, total_results, "top")
     if new_page != current_page:
         st.session_state.current_page = new_page
         st.rerun()
@@ -464,7 +458,7 @@ def main():
     # Show pagination controls (bottom)
     if total_pages > 1:
         st.markdown("<br>", unsafe_allow_html=True)
-        new_page = show_pagination(current_page, total_pages, total_results)
+        new_page = show_pagination(current_page, total_pages, total_results, "bottom")
         if new_page != current_page:
             st.session_state.current_page = new_page
             st.rerun()
