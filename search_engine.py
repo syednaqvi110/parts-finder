@@ -140,146 +140,79 @@ class EnhancedSearchEngine:
         
         return paginated_results, metadata
     
-    def _perform_search(self, query: str, df: pd.DataFrame) -> List[Tuple]:
-        """Core search algorithm with multiple strategies."""
-        query_lower = query.lower()
-        results = []
-        seen_indices = set()
-        
-        # Strategy 1: Exact matches (highest priority)
-        exact_results = self._exact_match_search(query_lower, df)
-        for result in exact_results:
-            if result[0] not in seen_indices:
-                results.append(result)
-                seen_indices.add(result[0])
-        
-        # Strategy 2: Prefix and substring matches
-        substring_results = self._substring_search(query_lower, df, seen_indices)
-        results.extend(substring_results)
-        seen_indices.update(r[0] for r in substring_results)
-        
-        # Strategy 3: Word-based matches
-        word_results = self._word_match_search(query_lower, df, seen_indices)
-        results.extend(word_results)
-        seen_indices.update(r[0] for r in word_results)
-        
-        # Strategy 4: Fuzzy matches (lowest priority)
-        if len(query) > 2:
-            fuzzy_results = self._fuzzy_search(query_lower, df, seen_indices)
-            results.extend(fuzzy_results)
-        
-        # Sort by score and limit results
-        results.sort(key=lambda x: x[3], reverse=True)
-        return results[:self.config.max_search_results]
-    
-    def _exact_match_search(self, query: str, df: pd.DataFrame) -> List[Tuple]:
-        """Find exact matches."""
-        results = []
-        
-        for idx, row in df.iterrows():
-            part_num_lower = row['part_number'].lower()
-            desc_lower = row['description'].lower()
-            
-            if query == part_num_lower:
-                results.append((idx, row['part_number'], row['description'], 100))
-            elif query == desc_lower:
-                results.append((idx, row['part_number'], row['description'], 98))
-        
-        return results
-    
-    def _substring_search(self, query: str, df: pd.DataFrame, seen_indices: Set[int]) -> List[Tuple]:
-        """Find prefix and substring matches."""
-        results = []
-        
-        for idx, row in df.iterrows():
-            if idx in seen_indices:
-                continue
-                
-            part_num_lower = row['part_number'].lower()
-            desc_lower = row['description'].lower()
-            
-            # Prefix matches
-            if part_num_lower.startswith(query):
-                score = 95 - min(10, len(part_num_lower) - len(query))  # Prefer shorter matches
-                results.append((idx, row['part_number'], row['description'], score))
-            elif desc_lower.startswith(query):
-                results.append((idx, row['part_number'], row['description'], 88))
-            
-            # Substring matches
-            elif query in part_num_lower:
-                position_penalty = part_num_lower.index(query) * 2  # Prefer matches at beginning
-                score = max(70, 90 - position_penalty)
-                results.append((idx, row['part_number'], row['description'], score))
-            elif query in desc_lower:
-                results.append((idx, row['part_number'], row['description'], 75))
-        
-        return results
-    
-    def _word_match_search(self, query: str, df: pd.DataFrame, seen_indices: Set[int]) -> List[Tuple]:
-        """Find word-based matches."""
-        results = []
+    def _calculate_keyword_completeness_score(self, query: str, part_number: str, description: str) -> int:
+        """Calculate score based on how many query keywords are matched."""
         query_words = set(self.word_split_pattern.split(query.lower()))
         query_words = {w for w in query_words if len(w) > 1}  # Filter short words
         
         if not query_words:
-            return results
+            return 0
         
-        for idx, row in df.iterrows():
-            if idx in seen_indices:
-                continue
-            
-            part_words = set(self.word_split_pattern.split(row['part_number'].lower()))
-            desc_words = set(row['description'].lower().split())
-            
-            # Calculate word matches
-            part_matches = len(query_words.intersection(part_words))
-            desc_matches = len(query_words.intersection(desc_words))
-            
-            total_matches = part_matches * 2 + desc_matches  # Weight part number matches higher
-            
-            if total_matches > 0:
-                # Score based on match ratio and total matches
-                match_ratio = (part_matches + desc_matches) / len(query_words)
-                base_score = 50 + (match_ratio * 30)
-                bonus = min(10, total_matches * 2)
-                score = int(base_score + bonus)
-                results.append((idx, row['part_number'], row['description'], score))
+        # Get words from part number and description
+        part_words = set(self.word_split_pattern.split(part_number.lower()))
+        desc_words = set(description.lower().split())
+        all_item_words = part_words.union(desc_words)
         
-        return results
-    
-    def _fuzzy_search(self, query: str, df: pd.DataFrame, seen_indices: Set[int]) -> List[Tuple]:
-        """Perform fuzzy matching on remaining items."""
-        remaining_indices = [i for i in range(len(df)) if i not in seen_indices]
+        # Count matches
+        matched_keywords = query_words.intersection(all_item_words)
+        match_ratio = len(matched_keywords) / len(query_words)
         
-        if not remaining_indices:
-            return []
+        # Base score heavily weighted by completeness
+        base_score = int(match_ratio * 100)  # 0-100 based on % of keywords matched
         
-        # Create searchable text for remaining items
-        searchable_texts = []
-        for idx in remaining_indices:
-            row = df.iloc[idx]
-            searchable_text = f"{row['part_number']} {row['description']}".lower()
-            searchable_texts.append(searchable_text)
+        # Bonus points for part number matches vs description matches
+        part_matches = len(query_words.intersection(part_words))
+        if part_matches > 0:
+            base_score += 20  # Bonus for part number matches
         
-        # Perform fuzzy search
-        fuzzy_results = process.extract(
-            query, 
-            searchable_texts, 
-            scorer=fuzz.WRatio, 
-            limit=min(30, len(remaining_indices))
-        )
-        
+        return min(base_score, 120)  # Cap at 120
+
+    def _perform_search(self, query: str, df: pd.DataFrame) -> List[Tuple]:
+        """Improved search that prioritizes keyword completeness."""
+        query_lower = query.lower()
         results = []
-        for match_text, score, relative_idx in fuzzy_results:
-            if score >= self.config.fuzzy_threshold:
-                actual_idx = remaining_indices[relative_idx]
-                row = df.iloc[actual_idx]
-                
-                # Adjust score to fit our range
-                adjusted_score = int(30 + (score - self.config.fuzzy_threshold) * 40 / (100 - self.config.fuzzy_threshold))
-                results.append((actual_idx, row['part_number'], row['description'], adjusted_score))
         
-        return results
+        # For each row, calculate the keyword completeness score
+        for idx, row in df.iterrows():
+            part_num = row['part_number']
+            desc = row['description']
+            
+            # Get keyword completeness score (0-120)
+            keyword_score = self._calculate_keyword_completeness_score(query_lower, part_num, desc)
+            
+            if keyword_score == 0:
+                continue  # No matches
+            
+            # Add bonuses for exact matches and position
+            final_score = keyword_score
+            
+            # Exact match bonus
+            if query_lower == part_num.lower():
+                final_score += 50
+            elif query_lower == desc.lower():
+                final_score += 40
+            
+            # Prefix match bonus
+            elif part_num.lower().startswith(query_lower):
+                final_score += 30
+            elif desc.lower().startswith(query_lower):
+                final_score += 25
+            
+            # Substring position bonus (earlier = better)
+            elif query_lower in part_num.lower():
+                position = part_num.lower().index(query_lower)
+                position_bonus = max(0, 20 - position)  # Up to 20 points for early position
+                final_score += position_bonus
+            elif query_lower in desc.lower():
+                position = desc.lower().index(query_lower)
+                position_bonus = max(0, 15 - position)  # Up to 15 points for early position in description
+                final_score += position_bonus
+            
+            results.append((idx, part_num, desc, final_score))
+        
+        # Sort by score (highest first) and limit results
+        results.sort(key=lambda x: x[3], reverse=True)
+        return results[:self.config.max_search_results]
     
     def get_search_suggestions(self, partial_query: str) -> List[str]:
         """Get search suggestions."""
