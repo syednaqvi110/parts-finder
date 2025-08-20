@@ -243,117 +243,73 @@ def load_parts_data():
 # SEARCH FUNCTIONS
 # ============================================================================
 def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
-    """Smart search with keyword completeness AND partial matching - ENHANCED to combine partial + keywords."""
+    """FIXED: Simple and reliable search that combines partial + keywords correctly."""
     if not query.strip() or df.empty:
         return []
     
     query = query.lower().strip()
     results = []
     
-    # Split query into keywords (filter out very short words)
-    query_words = set([word for word in re.split(r'[-_\s\.]+', query) if len(word) > 1])
+    # Split query into individual words
+    query_words = [word for word in re.split(r'[-_\s\.]+', query) if len(word) > 1]
+    
+    if not query_words:
+        return []
     
     for idx, row in df.iterrows():
         part_num = row['part_number'].lower()
         desc_lower = row['description'].lower()
         
-        # Get all words from part number and description
-        part_words = set(re.split(r'[-_\s\.]+', part_num))
-        desc_words = set(desc_lower.split())
-        all_item_words = part_words.union(desc_words)
+        # Calculate match score for this item
+        total_score = 0
+        matched_words = 0
         
-        # Count keyword matches
-        matched_keywords = query_words.intersection(all_item_words) if query_words else set()
-        
-        # Calculate base score
-        base_score = 0
-        
-        # === STRATEGY 1: EXACT MATCHES (Highest Priority) ===
+        # Strategy 1: Exact matches (highest priority)
         if query == part_num:
-            base_score = 200  # Exact part number match
+            total_score = 250
         elif query == desc_lower:
-            base_score = 190  # Exact description match
-        
-        # === STRATEGY 2: COMBINED PARTIAL + KEYWORDS ===
+            total_score = 240
         else:
-            # Check for partial matches in part number or description
-            partial_part_score = 0
-            partial_desc_score = 0
-            
-            # Partial part number matching
-            if len(query) >= 3 and part_num.startswith(query):
-                partial_part_score = 180  # Part number starts with query
-            elif len(query) >= 3 and query in part_num:
-                position = part_num.index(query)
-                partial_part_score = 170 - min(position * 2, 30)  # Earlier position = higher score
-            
-            # Partial description matching  
-            if len(query) >= 3 and desc_lower.startswith(query):
-                partial_desc_score = 160  # Description starts with query
-            elif len(query) >= 3 and query in desc_lower:
-                position = desc_lower.index(query)
-                partial_desc_score = 150 - min(position * 2, 30)  # Earlier position = higher score
-            
-            # KEYWORD COMPLETENESS SCORE (for multiple words)
-            keyword_score = 0
-            if len(query_words) > 1 and matched_keywords:
-                match_ratio = len(matched_keywords) / len(query_words)
-                keyword_score = int(match_ratio * 120)  # 0-120 based on % of keywords matched
+            # Strategy 2: Check each query word for matches
+            for word in query_words:
+                word_score = 0
                 
-                # Bonus for part number matches
-                part_matches = len(query_words.intersection(part_words))
-                if part_matches > 0:
-                    keyword_score += 25
-            
-            # SINGLE WORD MATCHES (for single word queries)
-            elif len(query_words) == 1 and matched_keywords:
-                word = next(iter(query_words))
-                if word in part_words:
-                    keyword_score = 100
-                    if part_num.startswith(word):
-                        keyword_score += 20
-                elif word in desc_words:
-                    keyword_score = 90
-                    if desc_lower.startswith(word):
-                        keyword_score += 15
-            
-            # FUZZY/PARTIAL WORD MATCHES
-            else:
-                found_partial = False
-                for word in query_words:
-                    if len(word) >= 3:
-                        # Check part number words
-                        for part_word in part_words:
-                            if word in part_word or part_word in word:
-                                keyword_score = max(keyword_score, 80)
-                                found_partial = True
-                        
-                        # Check description words
-                        for desc_word in desc_words:
-                            if word in desc_word or desc_word in word:
-                                keyword_score = max(keyword_score, 70)
-                                found_partial = True
+                # Check part number for this word
+                if word == part_num:
+                    word_score = 200  # Exact part number match
+                elif len(word) >= 3 and part_num.startswith(word):
+                    word_score = 150  # Part number starts with word (like "m1433")
+                elif len(word) >= 3 and word in part_num:
+                    # Word found somewhere in part number
+                    position = part_num.index(word)
+                    word_score = 140 - min(position * 3, 40)  # Earlier position = higher score
                 
-                if not found_partial and partial_part_score == 0 and partial_desc_score == 0:
-                    continue  # No matches found, skip this item
+                # If not found in part number, check description
+                if word_score == 0:
+                    if word in desc_lower.split():
+                        word_score = 100  # Exact word match in description
+                    elif len(word) >= 3 and word in desc_lower:
+                        word_score = 80   # Partial match in description
+                    else:
+                        # Check if word is part of any description word
+                        for desc_word in desc_lower.split():
+                            if word in desc_word:
+                                word_score = 60
+                                break
+                
+                # Add to total score
+                if word_score > 0:
+                    total_score += word_score
+                    matched_words += 1
             
-            # COMBINE SCORES: Use the best partial match + keyword completeness
-            base_score = max(partial_part_score, partial_desc_score)
-            
-            # ADD keyword score as a bonus (this is the key enhancement!)
-            if keyword_score > 0:
-                if base_score > 0:
-                    # If we have both partial and keyword matches, combine them
-                    base_score = base_score + (keyword_score * 0.6)  # 60% of keyword score as bonus
-                else:
-                    # If we only have keyword matches, use that as base
-                    base_score = keyword_score
+            # Boost score if we matched multiple words
+            if matched_words > 1:
+                completeness_bonus = (matched_words / len(query_words)) * 50
+                total_score += completeness_bonus
         
-        # Skip items with no meaningful score
-        if base_score <= 0:
-            continue
-        
-        results.append((idx, row['part_number'], row['description'], int(base_score)))
+        # Only include items that have matches
+        if total_score > 0:
+            results.append((idx, row['part_number'], row['description'], int(total_score)))
     
     # Sort by score (highest first) and return top results
     results.sort(key=lambda x: x[3], reverse=True)
