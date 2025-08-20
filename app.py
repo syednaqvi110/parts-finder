@@ -203,7 +203,7 @@ def load_parts_data():
 # SEARCH FUNCTIONS
 # ============================================================================
 def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
-    """Smart search that prioritizes keyword completeness - UPDATED VERSION."""
+    """Smart search with keyword completeness AND partial matching."""
     if not query.strip() or df.empty:
         return []
     
@@ -212,9 +212,6 @@ def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
     
     # Split query into keywords (filter out very short words)
     query_words = set([word for word in re.split(r'[-_\s\.]+', query) if len(word) > 1])
-    
-    if not query_words:
-        return []
     
     for idx, row in df.iterrows():
         part_num = row['part_number'].lower()
@@ -226,38 +223,86 @@ def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
         all_item_words = part_words.union(desc_words)
         
         # Count keyword matches
-        matched_keywords = query_words.intersection(all_item_words)
+        matched_keywords = query_words.intersection(all_item_words) if query_words else set()
         
-        if not matched_keywords:
-            continue  # No matches, skip this item
+        # Calculate base score
+        base_score = 0
         
-        # KEYWORD COMPLETENESS SCORE (most important factor)
-        match_ratio = len(matched_keywords) / len(query_words)
-        base_score = int(match_ratio * 100)  # 0-100 based on % of keywords matched
-        
-        # Bonus for part number matches (part numbers are more important than descriptions)
-        part_matches = len(query_words.intersection(part_words))
-        if part_matches > 0:
-            base_score += 25
-        
-        # Additional bonuses for exact/prefix matches
+        # === STRATEGY 1: EXACT MATCHES (Highest Priority) ===
         if query == part_num:
-            base_score += 50  # Exact part number match
+            base_score = 200  # Exact part number match
         elif query == desc_lower:
-            base_score += 40  # Exact description match
-        elif part_num.startswith(query):
-            base_score += 30  # Part number starts with query
-        elif desc_lower.startswith(query):
-            base_score += 25  # Description starts with query
-        elif query in part_num:
-            # Substring bonus based on position (earlier = better)
+            base_score = 190  # Exact description match
+        
+        # === STRATEGY 2: PARTIAL PART NUMBER MATCHING ===
+        elif len(query) >= 3 and part_num.startswith(query):
+            base_score = 180  # Part number starts with query (like "78130" matching "78130201")
+        elif len(query) >= 3 and query in part_num:
+            # Partial substring in part number
             position = part_num.index(query)
-            position_bonus = max(0, 20 - position)
-            base_score += position_bonus
-        elif query in desc_lower:
+            base_score = 170 - min(position * 2, 30)  # Earlier position = higher score
+        
+        # === STRATEGY 3: PARTIAL DESCRIPTION MATCHING ===
+        elif len(query) >= 3 and desc_lower.startswith(query):
+            base_score = 160  # Description starts with query
+        elif len(query) >= 3 and query in desc_lower:
+            # Partial substring in description
             position = desc_lower.index(query)
-            position_bonus = max(0, 15 - position)
-            base_score += position_bonus
+            base_score = 150 - min(position * 2, 30)  # Earlier position = higher score
+        
+        # === STRATEGY 4: KEYWORD COMPLETENESS (Multiple Words) ===
+        elif matched_keywords and len(query_words) > 1:
+            # KEYWORD COMPLETENESS SCORE (most important for multi-word queries)
+            match_ratio = len(matched_keywords) / len(query_words)
+            base_score = int(match_ratio * 120)  # 0-120 based on % of keywords matched
+            
+            # Bonus for part number matches (part numbers are more important than descriptions)
+            part_matches = len(query_words.intersection(part_words))
+            if part_matches > 0:
+                base_score += 25
+        
+        # === STRATEGY 5: SINGLE WORD MATCHES ===
+        elif matched_keywords and len(query_words) == 1:
+            # Single word found in item
+            word = next(iter(query_words))
+            
+            # Check if word is in part number
+            if word in part_words:
+                base_score = 100
+                # Bonus if it's at the start of part number
+                if part_num.startswith(word):
+                    base_score += 20
+            # Check if word is in description
+            elif word in desc_words:
+                base_score = 90
+                # Bonus if it's at the start of description
+                if desc_lower.startswith(word):
+                    base_score += 15
+        
+        # === STRATEGY 6: FUZZY/PARTIAL WORD MATCHES ===
+        else:
+            # Look for partial matches within words
+            found_partial = False
+            for word in query_words:
+                if len(word) >= 3:  # Only check words with 3+ characters
+                    # Check part number words
+                    for part_word in part_words:
+                        if word in part_word or part_word in word:
+                            base_score = max(base_score, 80)
+                            found_partial = True
+                    
+                    # Check description words
+                    for desc_word in desc_words:
+                        if word in desc_word or desc_word in word:
+                            base_score = max(base_score, 70)
+                            found_partial = True
+            
+            if not found_partial:
+                continue  # No matches found, skip this item
+        
+        # Skip items with no meaningful score
+        if base_score <= 0:
+            continue
         
         results.append((idx, row['part_number'], row['description'], base_score))
     
@@ -343,6 +388,19 @@ def show_pagination(current_page: int, total_pages: int, results_count: int, pos
     
     return current_page
 
+def show_footer():
+    """Display footer with contact information."""
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align: center; color: #6c757d; font-size: 0.9em; padding: 20px 0;'>
+        <p><strong>Need Help or Have Feedback?</strong></p>
+        <p>For any issues, suggestions, or feedback about this Parts Finder tool, please email:</p>
+        <p><a href='mailto:Syed.naqvi@bgis.com' style='color: #1f77b4; text-decoration: none;'>📧 Syed.naqvi@bgis.com</a></p>
+        <p style='margin-top: 15px; font-size: 0.8em;'>🔧 Parts Finder Tool - Built for efficient parts searching</p>
+    </div>
+    """, unsafe_allow_html=True)
+
 # ============================================================================
 # MAIN APPLICATION
 # ============================================================================
@@ -365,6 +423,7 @@ def main():
         st.markdown("1. Check your internet connection")
         st.markdown("2. Make sure the Google Sheet is published as CSV")
         st.markdown("3. Verify the sheet has 'part_number' and 'description' columns")
+        show_footer()  # Show footer even on error
         return
     else:
         show_message(f"✅ Successfully loaded {len(df):,} parts", "success")
@@ -380,6 +439,7 @@ def main():
     # Show recent searches if no current search
     if not search_query.strip():
         show_recent_searches()
+        show_footer()  # Show footer when no search
         return
     
     # Add delay to prevent too many searches while typing
@@ -401,6 +461,7 @@ def main():
         st.markdown("• Use fewer words")
         st.markdown("• Try partial part numbers")
         st.markdown("• Use different keywords")
+        show_footer()  # Show footer when no results
         return
     
     # Calculate pagination
@@ -436,6 +497,9 @@ def main():
         if new_page != current_page:
             st.session_state.current_page = new_page
             st.rerun()
+    
+    # Always show footer at the end
+    show_footer()
 
 # ============================================================================
 # RUN THE APP
