@@ -407,7 +407,7 @@ def main():
     
     # App title
     st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>🔧 Parts Finder</h1>", 
+    st.markdown("<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>Parts Finder</h1>", 
                unsafe_allow_html=True)
     
     # Load data
