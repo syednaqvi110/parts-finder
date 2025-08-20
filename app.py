@@ -358,37 +358,6 @@ def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
     # Sort by score (highest first) and return top results
     results.sort(key=lambda x: x[3], reverse=True)
     return results[:MAX_RESULTS]
-        
-        # === STRATEGY 6: FUZZY/PARTIAL WORD MATCHES ===
-        else:
-            # Look for partial matches within words
-            found_partial = False
-            for word in query_words:
-                if len(word) >= 3:  # Only check words with 3+ characters
-                    # Check part number words
-                    for part_word in part_words:
-                        if word in part_word or part_word in word:
-                            base_score = max(base_score, 80)
-                            found_partial = True
-                    
-                    # Check description words
-                    for desc_word in desc_words:
-                        if word in desc_word or desc_word in word:
-                            base_score = max(base_score, 70)
-                            found_partial = True
-            
-            if not found_partial:
-                continue  # No matches found, skip this item
-        
-        # Skip items with no meaningful score
-        if base_score <= 0:
-            continue
-        
-        results.append((idx, row['part_number'], row['description'], base_score))
-    
-    # Sort by score (highest first) and return top results
-    results.sort(key=lambda x: x[3], reverse=True)
-    return results[:MAX_RESULTS]
 
 def highlight_text(text: str, query: str) -> str:
     """Highlight search terms in text."""
@@ -477,7 +446,7 @@ def show_footer():
         <p><strong>Need Help or Have Feedback?</strong></p>
         <p>For any issues, suggestions, or feedback about this Parts Finder tool, please email:</p>
         <p><a href='mailto:Syed.naqvi@bgis.com' style='color: #1f77b4; text-decoration: none;'>📧 Syed.naqvi@bgis.com</a></p>
-        
+        <p style='margin-top: 15px; font-size: 0.8em;'>Parts Finder Tool - Built for efficient parts searching</p>
     </div>
     """, unsafe_allow_html=True)
 
