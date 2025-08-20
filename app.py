@@ -124,6 +124,47 @@ st.markdown("""
         border: 1px solid #dee2e6;
         text-align: center;
     }
+    
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+        .stats-container {
+            flex-direction: column;
+        }
+        
+        .stat-item {
+            min-width: auto;
+        }
+        
+        .pagination {
+            flex-wrap: wrap;
+        }
+        
+        /* FIX: Mobile-friendly title */
+        h1 {
+            font-size: 2.5em !important;  /* Smaller font on mobile */
+            line-height: 1.2 !important;
+            margin-bottom: 20px !important;
+        }
+        
+        /* Make search results more mobile-friendly too */
+        .search-result {
+            padding: 10px;
+            margin: 8px 0;
+        }
+        
+        .part-number {
+            font-size: 1.1em;
+        }
+        
+        .part-description {
+            font-size: 1em;
+        }
+        
+        /* Make the main container more mobile-friendly */
+        .stTextInput > div > div > input {
+            font-size: 16px;  /* Prevents zoom on iOS */
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -396,6 +437,7 @@ def show_footer():
         <p><strong>Need Help or Have Feedback?</strong></p>
         <p>For any issues, suggestions, or feedback about this Parts Finder tool, please email:</p>
         <p><a href='mailto:Syed.naqvi@bgis.com' style='color: #1f77b4; text-decoration: none;'>📧 Syed.naqvi@bgis.com</a></p>
+        <p style='margin-top: 15px; font-size: 0.8em;'>Parts Finder Tool - Built for efficient parts searching</p>
     </div>
     """, unsafe_allow_html=True)
 
