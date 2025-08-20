@@ -23,7 +23,6 @@ MAX_RESULTS = 100               # Maximum results to find
 # ============================================================================
 st.set_page_config(
     page_title="Parts Finder",
-    page_icon="🔧",
     layout="centered"
 )
 
@@ -397,7 +396,6 @@ def show_footer():
         <p><strong>Need Help or Have Feedback?</strong></p>
         <p>For any issues, suggestions, or feedback about this Parts Finder tool, please email:</p>
         <p><a href='mailto:Syed.naqvi@bgis.com' style='color: #1f77b4; text-decoration: none;'>📧 Syed.naqvi@bgis.com</a></p>
-        <p style='margin-top: 15px; font-size: 0.8em;'>🔧 Parts Finder Tool - Built for efficient parts searching</p>
     </div>
     """, unsafe_allow_html=True)
 
