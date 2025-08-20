@@ -438,7 +438,7 @@ def main():
         "Search for parts:",
         placeholder="Enter part number or description...",
         key="search_input",
-        help="Try typing a part number, description, or even partial matches. The search is smart and handles typos!"
+        help="Try typing a part number, description, or even partial matches."
     )
     
     # Show recent searches if no current search
