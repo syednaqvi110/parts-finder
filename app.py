@@ -352,7 +352,7 @@ def show_recent_searches():
         for i, search in enumerate(st.session_state.search_history[:5]):
             col_idx = i % len(cols)
             with cols[col_idx]:
-                if st.button(f"🕒 {search}", key=f"recent_{i}"):
+                if st.button(f"{search}", key=f"recent_{i}"):
                     st.session_state.search_input = search
                     st.rerun()
 
@@ -401,7 +401,7 @@ def show_footer():
     <div style='text-align: center; color: #6c757d; font-size: 0.9em; padding: 20px 0;'>
         <p><strong>Need Help or Have Feedback?</strong></p>
         <p>For any issues, suggestions, or feedback about this Parts Finder tool, please email:</p>
-        <p><a href='mailto:Syed.naqvi@bgis.com' style='color: #1f77b4; text-decoration: none;'>📧 Syed.naqvi@bgis.com</a></p>
+        <p><a href='mailto:Syed.naqvi@bgis.com' style='color: #1f77b4; text-decoration: none;'>Syed.naqvi@bgis.com</a></p>
       
     </div>
     """, unsafe_allow_html=True)
