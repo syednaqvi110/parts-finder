@@ -29,31 +29,64 @@ st.set_page_config(
 # Custom CSS for better appearance
 st.markdown("""
 <style>
-    /* Hide Streamlit branding and logos */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header {visibility: hidden;}
-    .stDeployButton {display:none;}
-    .stDecoration {display:none;}
+    /* Hide Streamlit branding and logos - COMPREHENSIVE VERSION */
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    header {visibility: hidden !important;}
+    .stDeployButton {display: none !important;}
+    .stDecoration {display: none !important;}
     
-    /* Hide additional Streamlit UI elements */
-    .viewerBadge_container__1QSob {display: none;}
-    .styles_viewerBadge__1yB5_ {display: none;}
-    .viewerBadge_link__1S137 {display: none;}
-    .viewerBadge_text__1JaDK {display: none;}
-    [data-testid="stToolbar"] {display: none;}
-    [data-testid="stDecoration"] {display: none;}
-    [data-testid="stStatusWidget"] {display: none;}
-    .stActionButton {display: none;}
+    /* Hide "Made with Streamlit" badge - Multiple selectors for different platforms */
+    .viewerBadge_container__1QSob {display: none !important;}
+    .styles_viewerBadge__1yB5_ {display: none !important;}
+    .viewerBadge_link__1S137 {display: none !important;}
+    .viewerBadge_text__1JaDK {display: none !important;}
     
-    /* Hide the "Made with Streamlit" and GitHub links */
-    .css-1rs6os {display: none;}
-    .css-17ziqus {display: none;}
-    .e1tzin5v2 {display: none;}
-    .e1tzin5v1 {display: none;}
-    .e1tzin5v0 {display: none;}
-    .eknhn3m1 {display: none;}
-    .eknhn3m0 {display: none;}
+    /* Hide toolbar and status elements */
+    [data-testid="stToolbar"] {display: none !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+    [data-testid="stStatusWidget"] {display: none !important;}
+    [data-testid="stHeader"] {display: none !important;}
+    [data-testid="stToolbarActions"] {display: none !important;}
+    
+    /* Additional Streamlit UI elements */
+    .stActionButton {display: none !important;}
+    .css-1rs6os {display: none !important;}
+    .css-17ziqus {display: none !important;}
+    .e1tzin5v2 {display: none !important;}
+    .e1tzin5v1 {display: none !important;}
+    .e1tzin5v0 {display: none !important;}
+    .eknhn3m1 {display: none !important;}
+    .eknhn3m0 {display: none !important;}
+    
+    /* Modern Streamlit classes (newer versions) */
+    .st-emotion-cache-1wbqy5l {display: none !important;}
+    .st-emotion-cache-17lntkn {display: none !important;}
+    .st-emotion-cache-1ec6rqw {display: none !important;}
+    
+    /* Mobile-specific hiding */
+    @media (max-width: 768px) {
+        .viewerBadge_container__1QSob,
+        .styles_viewerBadge__1yB5_,
+        [data-testid="stToolbar"],
+        [data-testid="stHeader"],
+        .stActionButton {
+            display: none !important;
+        }
+    }
+    
+    /* Universal approach - hide anything with "streamlit" in class/id */
+    [class*="streamlit" i] {
+        display: none !important;
+    }
+    [id*="streamlit" i] {
+        display: none !important;
+    }
+    
+    /* Hide elements containing "Made with" text */
+    *:contains("Made with") {
+        display: none !important;
+    }
     
     /* Search result highlighting */
     .highlight {
