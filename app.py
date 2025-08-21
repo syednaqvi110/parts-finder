@@ -316,7 +316,7 @@ def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
     return results[:MAX_RESULTS]
 
 def highlight_text(text: str, query: str) -> str:
-    """Highlight search terms in text safely without overlapping HTML."""
+    """Highlight search terms without creating overlapping HTML tags."""
     if not query.strip():
         return text
     
@@ -326,38 +326,59 @@ def highlight_text(text: str, query: str) -> str:
     
     import html
     
-    # Escape the text first to prevent HTML issues
+    # Escape HTML characters for safety
     escaped_text = html.escape(text)
-    
     query_words = [word for word in query.lower().split() if len(word) > 1]
+    
     if not query_words:
         return escaped_text
-    
-    # Sort words by length (longest first) to avoid overlaps
-    query_words.sort(key=len, reverse=True)
     
     # Problematic short words that commonly appear inside other words
     problematic_words = {'ass', 'as', 'is', 'it', 'in', 'on', 'or', 'an', 'at'}
     
-    highlighted = escaped_text
-    
+    # Find all matches for all words first
+    all_matches = []
     for word in query_words:
         if len(word) <= 3 and word.lower() in problematic_words:
-            # For problematic short words, only highlight complete words
-            pattern = re.compile(rf'\b({re.escape(word)})\b', re.IGNORECASE)
+            # For problematic short words, only match complete words
+            pattern = re.compile(rf'\b{re.escape(word)}\b', re.IGNORECASE)
         else:
-            # For all other words, allow partial matching
-            pattern = re.compile(f'({re.escape(word)})', re.IGNORECASE)
+            # For other words, allow partial matching
+            pattern = re.compile(re.escape(word), re.IGNORECASE)
         
-        # Only replace if the match doesn't already contain highlight spans
-        def replace_func(match):
-            if '<span class="highlight">' in match.group(0):
-                return match.group(0)  # Don't highlight already highlighted text
-            return f'<span class="highlight">{match.group(0)}</span>'
-        
-        highlighted = pattern.sub(replace_func, highlighted)
+        for match in pattern.finditer(escaped_text):
+            all_matches.append((match.start(), match.end()))
     
-    return highlighted
+    if not all_matches:
+        return escaped_text
+    
+    # Sort matches by start position and merge overlapping ranges
+    all_matches.sort()
+    merged_ranges = []
+    
+    for start, end in all_matches:
+        if merged_ranges and start <= merged_ranges[-1][1]:
+            # Overlapping or adjacent - merge with previous range
+            merged_ranges[-1] = (merged_ranges[-1][0], max(merged_ranges[-1][1], end))
+        else:
+            # No overlap - add as new range
+            merged_ranges.append((start, end))
+    
+    # Build the result by highlighting merged ranges
+    result = ""
+    last_end = 0
+    
+    for start, end in merged_ranges:
+        # Add text before this highlight
+        result += escaped_text[last_end:start]
+        # Add highlighted text
+        result += f'<span class="highlight">{escaped_text[start:end]}</span>'
+        last_end = end
+    
+    # Add remaining text after last highlight
+    result += escaped_text[last_end:]
+    
+    return result
 
 # ============================================================================
 # UI HELPER FUNCTIONS
