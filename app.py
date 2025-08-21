@@ -29,18 +29,37 @@ st.set_page_config(
 # Custom CSS for better appearance
 st.markdown("""
 <style>
-    /* Hide Streamlit branding */
+    /* Hide Streamlit branding and logos */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
     .stDeployButton {display:none;}
     .stDecoration {display:none;}
     
+    /* Hide additional Streamlit UI elements */
+    .viewerBadge_container__1QSob {display: none;}
+    .styles_viewerBadge__1yB5_ {display: none;}
+    .viewerBadge_link__1S137 {display: none;}
+    .viewerBadge_text__1JaDK {display: none;}
+    [data-testid="stToolbar"] {display: none;}
+    [data-testid="stDecoration"] {display: none;}
+    [data-testid="stStatusWidget"] {display: none;}
+    .stActionButton {display: none;}
+    
+    /* Hide the "Made with Streamlit" and GitHub links */
+    .css-1rs6os {display: none;}
+    .css-17ziqus {display: none;}
+    .e1tzin5v2 {display: none;}
+    .e1tzin5v1 {display: none;}
+    .e1tzin5v0 {display: none;}
+    .eknhn3m1 {display: none;}
+    .eknhn3m0 {display: none;}
+    
     /* Search result highlighting */
     .highlight {
         background-color: #fff3cd;
         font-weight: bold;
-      /*  padding: 1px 2px;*/
+        padding: 1px 2px;
         border-radius: 2px;
     }
     
