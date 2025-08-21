@@ -316,7 +316,7 @@ def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
     return results[:MAX_RESULTS]
 
 def highlight_text(text: str, query: str) -> str:
-    """Highlight search terms in text with protection against double-highlighting."""
+    """Highlight search terms in text with smart partial matching."""
     if not query.strip():
         return text
     
@@ -327,15 +327,21 @@ def highlight_text(text: str, query: str) -> str:
     query_words = [word for word in query.lower().split() if len(word) > 1]
     highlighted = text
     
-    # Sort words by length (longest first) to avoid partial matches inside other matches
+    # Sort words by length (longest first) to avoid conflicts
     query_words.sort(key=len, reverse=True)
     
+    # Problematic short words that commonly appear inside other words
+    problematic_words = {'ass', 'as', 'is', 'it', 'in', 'on', 'or', 'an', 'at'}
+    
     for word in query_words:
-        # Only highlight if the word is at least 3 characters or is a complete word
-        if len(word) >= 3 or re.search(rf'\b{re.escape(word)}\b', highlighted, re.IGNORECASE):
-            # Use word boundaries to avoid highlighting partial matches inside other words
+        if len(word) <= 3 and word.lower() in problematic_words:
+            # For problematic short words, only highlight complete words
             pattern = re.compile(rf'\b({re.escape(word)})\b', re.IGNORECASE)
-            highlighted = pattern.sub(r'<span class="highlight">\1</span>', highlighted)
+        else:
+            # For all other words, allow partial matching anywhere
+            pattern = re.compile(f'({re.escape(word)})', re.IGNORECASE)
+        
+        highlighted = pattern.sub(r'<span class="highlight">\1</span>', highlighted)
     
     return highlighted
 
