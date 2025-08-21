@@ -316,7 +316,7 @@ def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
     return results[:MAX_RESULTS]
 
 def highlight_text(text: str, query: str) -> str:
-    """Highlight search terms in text with smart partial matching."""
+    """Highlight search terms in text safely without overlapping HTML."""
     if not query.strip():
         return text
     
@@ -324,24 +324,38 @@ def highlight_text(text: str, query: str) -> str:
     if '<span class="highlight">' in text:
         return text
     
-    query_words = [word for word in query.lower().split() if len(word) > 1]
-    highlighted = text
+    import html
     
-    # Sort words by length (longest first) to avoid conflicts
+    # Escape the text first to prevent HTML issues
+    escaped_text = html.escape(text)
+    
+    query_words = [word for word in query.lower().split() if len(word) > 1]
+    if not query_words:
+        return escaped_text
+    
+    # Sort words by length (longest first) to avoid overlaps
     query_words.sort(key=len, reverse=True)
     
     # Problematic short words that commonly appear inside other words
     problematic_words = {'ass', 'as', 'is', 'it', 'in', 'on', 'or', 'an', 'at'}
+    
+    highlighted = escaped_text
     
     for word in query_words:
         if len(word) <= 3 and word.lower() in problematic_words:
             # For problematic short words, only highlight complete words
             pattern = re.compile(rf'\b({re.escape(word)})\b', re.IGNORECASE)
         else:
-            # For all other words, allow partial matching anywhere
+            # For all other words, allow partial matching
             pattern = re.compile(f'({re.escape(word)})', re.IGNORECASE)
         
-        highlighted = pattern.sub(r'<span class="highlight">\1</span>', highlighted)
+        # Only replace if the match doesn't already contain highlight spans
+        def replace_func(match):
+            if '<span class="highlight">' in match.group(0):
+                return match.group(0)  # Don't highlight already highlighted text
+            return f'<span class="highlight">{match.group(0)}</span>'
+        
+        highlighted = pattern.sub(replace_func, highlighted)
     
     return highlighted
 
