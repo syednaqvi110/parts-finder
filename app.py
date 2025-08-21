@@ -40,7 +40,7 @@ st.markdown("""
     .highlight {
         background-color: #fff3cd;
         font-weight: bold;
-        padding: 1px 2px;
+      /*  padding: 1px 2px;*/
         border-radius: 2px;
     }
     
