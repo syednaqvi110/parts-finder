@@ -534,7 +534,7 @@ def main():
         show_footer()  # Show footer even on error
         return
     else:
-        show_message(f"✅ Successfully loaded {len(df):,} parts", "success")
+        show_message(f"Successfully loaded {len(df):,} parts", "success")
     
     # Search input
     search_query = st.text_input(
