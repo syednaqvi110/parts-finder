@@ -23,6 +23,7 @@ MAX_RESULTS = 100               # Maximum results to find
 # ============================================================================
 st.set_page_config(
     page_title="Parts Finder",
+    page_icon="🔍",
     layout="centered"
 )
 
