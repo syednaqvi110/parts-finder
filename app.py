@@ -22,7 +22,7 @@ MAX_RESULTS = 100               # Maximum results to find
 # STREAMLIT PAGE SETUP
 # ============================================================================
 st.set_page_config(
-    page_title="Parts Finder",
+    page_title="Parts",
     page_icon="🔍",
     layout="centered"
 )
