@@ -215,8 +215,8 @@ def show_pagination(current_page: int, total_pages: int, total_results: int):
 def main():
     init_session_state()
     
-    # Simple header
-    st.title("Parts Finder")
+    # Centered header
+    st.markdown("<h1 style='text-align: center;'>Parts Finder</h1>", unsafe_allow_html=True)
     
     # Load data
     df, message = load_parts_data()
