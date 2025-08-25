@@ -273,7 +273,7 @@ def main():
 def show_contact():
     st.write("")
     st.write("---")
-    st.markdown("<p style='text-align: center;'>For support or feedback: Syed.naqvi@bgis.com</p>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center;'>For support or feedback: <a href='mailto:Syed.naqvi@bgis.com'>Syed.naqvi@bgis.com</a></p>", unsafe_allow_html=True)
 
 # ============================================================================
 # RUN APP
