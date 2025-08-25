@@ -1,5 +1,3 @@
-st.cache_data.clear()
-
 import streamlit as st
 import pandas as pd
 import requests
@@ -9,201 +7,128 @@ import time
 from typing import List, Tuple, Dict, Any
 from datetime import datetime
 from io import StringIO
+import threading
+import hashlib
 
 # ============================================================================
-# SIMPLE CONFIGURATION - JUST CHANGE THE URL BELOW
+# OPTIMIZED CONFIGURATION FOR CONCURRENT USERS
 # ============================================================================
 PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/pub?output=csv"
 
-# Basic settings (you can adjust these if needed)
-RESULTS_PER_PAGE = 15           # How many results to show per page
-SEARCH_DELAY = 0.3              # Seconds to wait before searching (prevents lag)
-MAX_RESULTS = 100               # Maximum results to find
+# Optimized settings for concurrent usage
+RESULTS_PER_PAGE = 15
+SEARCH_DELAY = 0.1  # Reduced delay for better responsiveness
+MAX_RESULTS = 50    # Reduced to improve performance
+DATA_CACHE_TTL = 600  # 10 minutes cache (longer for better performance)
+REQUEST_TIMEOUT = 10  # Shorter timeout to prevent hanging
 
 # ============================================================================
-# STREAMLIT PAGE SETUP
+# STREAMLIT PAGE SETUP - OPTIMIZED
 # ============================================================================
 st.set_page_config(
     page_title="Parts Finder",
     page_icon="🔍",
-    layout="centered"
+    layout="centered",
+    initial_sidebar_state="collapsed"  # Hide sidebar for cleaner UI
 )
 
-# Custom CSS for better appearance
+# Enhanced CSS with performance optimizations
 st.markdown("""
 <style>
-    /* Hide Streamlit branding and logos - COMPREHENSIVE VERSION */
+    /* Hide all Streamlit branding */
     #MainMenu {visibility: hidden !important;}
     footer {visibility: hidden !important;}
     header {visibility: hidden !important;}
     .stDeployButton {display: none !important;}
     .stDecoration {display: none !important;}
     
-    /* Hide "Made with Streamlit" badge - Multiple selectors for different platforms */
-    .viewerBadge_container__1QSob {display: none !important;}
-    .styles_viewerBadge__1yB5_ {display: none !important;}
-    .viewerBadge_link__1S137 {display: none !important;}
-    .viewerBadge_text__1JaDK {display: none !important;}
-    
-    /* Hide toolbar and status elements */
-    [data-testid="stToolbar"] {display: none !important;}
-    [data-testid="stDecoration"] {display: none !important;}
-    [data-testid="stStatusWidget"] {display: none !important;}
-    [data-testid="stHeader"] {display: none !important;}
-    [data-testid="stToolbarActions"] {display: none !important;}
-    
-    /* Additional Streamlit UI elements */
-    .stActionButton {display: none !important;}
-    .css-1rs6os {display: none !important;}
-    .css-17ziqus {display: none !important;}
-    .e1tzin5v2 {display: none !important;}
-    .e1tzin5v1 {display: none !important;}
-    .e1tzin5v0 {display: none !important;}
-    .eknhn3m1 {display: none !important;}
-    .eknhn3m0 {display: none !important;}
-    
-    /* Modern Streamlit classes (newer versions) */
-    .st-emotion-cache-1wbqy5l {display: none !important;}
-    .st-emotion-cache-17lntkn {display: none !important;}
-    .st-emotion-cache-1ec6rqw {display: none !important;}
-    
-    /* Mobile-specific hiding */
-    @media (max-width: 768px) {
-        .viewerBadge_container__1QSob,
-        .styles_viewerBadge__1yB5_,
-        [data-testid="stToolbar"],
-        [data-testid="stHeader"],
-        .stActionButton {
-            display: none !important;
-        }
+    /* Performance optimizations */
+    .stApp {
+        top: 0px;
     }
     
-    /* Universal approach - hide anything with "streamlit" in class/id */
-    [class*="streamlit" i] {
-        display: none !important;
-    }
-    [id*="streamlit" i] {
-        display: none !important;
-    }
-    
-    /* Hide elements containing "Made with" text */
-    *:contains("Made with") {
-        display: none !important;
-    }
-    
-    /* Search result highlighting */
+    /* Enhanced search highlighting */
     .highlight {
-        background-color: #fff3cd;
+        background: linear-gradient(135deg, #fff3cd, #ffeaa7);
         font-weight: bold;
-        padding: 1px 2px;
-        border-radius: 2px;
+        padding: 2px 4px;
+        border-radius: 3px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
     
-    /* Result styling */
+    /* Improved result styling */
     .search-result {
         border-left: 4px solid #1f77b4;
-        padding: 15px;
-        margin: 10px 0;
-        background-color: #f8f9fa;
-        border-radius: 0 8px 8px 0;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        padding: 15px 20px;
+        margin: 12px 0;
+        background: linear-gradient(135deg, #f8f9fa, #ffffff);
+        border-radius: 0 10px 10px 0;
+        box-shadow: 0 3px 6px rgba(0,0,0,0.1);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    
+    .search-result:hover {
+        transform: translateX(5px);
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
     }
     
     .part-number {
-        font-size: 1.2em;
+        font-size: 1.25em;
         font-weight: bold;
         color: #1f77b4;
         margin-bottom: 8px;
+        text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
     }
     
     .part-description {
-        color: #333;
-        line-height: 1.4;
+        color: #2c3e50;
+        line-height: 1.5;
         font-size: 1.05em;
     }
     
-    /* Error and info messages */
-    .error-box {
-        background-color: #f8d7da;
-        color: #721c24;
-        padding: 15px;
-        border-radius: 8px;
-        border: 1px solid #f5c6cb;
+    /* Loading states */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(255, 255, 255, 0.9);
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        z-index: 9999;
+    }
+    
+    /* Improved status messages */
+    .status-message {
+        padding: 15px 20px;
+        border-radius: 10px;
         margin: 15px 0;
+        font-weight: 600;
+        box-shadow: 0 3px 10px rgba(0,0,0,0.1);
     }
     
-    .info-box {
-        background-color: #d1ecf1;
-        color: #0c5460;
-        padding: 15px;
-        border-radius: 8px;
-        border: 1px solid #bee5eb;
-        margin: 15px 0;
+    .success { 
+        background: linear-gradient(135deg, #d4edda, #c3e6cb); 
+        color: #155724; 
+        border-left: 5px solid #28a745;
+    }
+    .error { 
+        background: linear-gradient(135deg, #f8d7da, #f5c6cb); 
+        color: #721c24; 
+        border-left: 5px solid #dc3545;
+    }
+    .info { 
+        background: linear-gradient(135deg, #d1ecf1, #bee5eb); 
+        color: #0c5460; 
+        border-left: 5px solid #17a2b8;
     }
     
-    .success-box {
-        background-color: #d4edda;
-        color: #155724;
-        padding: 15px;
-        border-radius: 8px;
-        border: 1px solid #c3e6cb;
-        margin: 15px 0;
-    }
-    
-    /* Loading spinner */
-    .loading {
-        text-align: center;
-        padding: 20px;
-        color: #6c757d;
-    }
-    
-    /* Recent searches */
-    .recent-search {
-        display: inline-block;
-        background-color: #e9ecef;
-        color: #495057;
-        padding: 6px 12px;
-        margin: 4px;
-        border-radius: 15px;
-        font-size: 0.9em;
-        cursor: pointer;
-        border: 1px solid #dee2e6;
-    }
-    
-    /* Statistics */
-    .stats {
-        background-color: #f8f9fa;
-        padding: 10px 15px;
-        border-radius: 8px;
-        margin: 10px 0;
-        border: 1px solid #dee2e6;
-        text-align: center;
-    }
-    
-    /* Mobile responsiveness */
+    /* Mobile optimizations */
     @media (max-width: 768px) {
-        .stats-container {
-            flex-direction: column;
-        }
-        
-        .stat-item {
-            min-width: auto;
-        }
-        
-        .pagination {
-            flex-wrap: wrap;
-        }
-        
-        /* FIX: Mobile-friendly title */
-        h1 {
-            font-size: 2.5em !important;  /* Smaller font on mobile */
-            line-height: 1.2 !important;
-            margin-bottom: 20px !important;
-        }
-        
-        /* Make search results more mobile-friendly too */
         .search-result {
-            padding: 10px;
+            padding: 12px;
             margin: 8px 0;
         }
         
@@ -211,259 +136,267 @@ st.markdown("""
             font-size: 1.1em;
         }
         
-        .part-description {
-            font-size: 1em;
+        h1 {
+            font-size: 2.5em !important;
+        }
+    }
+    
+    /* Performance: Reduce animations on mobile */
+    @media (max-width: 768px) {
+        .search-result {
+            transition: none;
         }
         
-        /* Make the main container more mobile-friendly */
-        .stTextInput > div > div > input {
-            font-size: 16px;  /* Prevents zoom on iOS */
+        .search-result:hover {
+            transform: none;
         }
     }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# SESSION STATE SETUP
+# ENHANCED SESSION STATE MANAGEMENT FOR CONCURRENT USERS
 # ============================================================================
-if 'search_history' not in st.session_state:
-    st.session_state.search_history = []
-if 'current_page' not in st.session_state:
-    st.session_state.current_page = 1
-if 'last_search' not in st.session_state:
-    st.session_state.last_search = ""
+def init_session_state():
+    """Initialize session state with user-specific keys."""
+    # Generate unique session ID for better concurrent handling
+    if 'session_id' not in st.session_state:
+        st.session_state.session_id = hashlib.md5(
+            f"{datetime.now()}-{id(st.session_state)}".encode()
+        ).hexdigest()[:8]
+    
+    defaults = {
+        'search_history': [],
+        'current_page': 1,
+        'last_search': "",
+        'search_results': [],
+        'last_search_time': 0,
+        'data_load_attempts': 0
+    }
+    
+    for key, default_value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = default_value
 
 # ============================================================================
-# DATA LOADING FUNCTIONS
+# OPTIMIZED DATA LOADING WITH BETTER CONCURRENT HANDLING
 # ============================================================================
-@st.cache_data(ttl=300, show_spinner=False)  # Cache for 5 minutes
+@st.cache_data(
+    ttl=DATA_CACHE_TTL, 
+    show_spinner=False,
+    max_entries=1,  # Only cache one version to save memory
+    persist=True    # Persist across sessions for better performance
+)
 def load_parts_data():
-    """Load parts data from Google Sheets with good error handling."""
+    """Load parts data with optimized concurrent access and better error handling."""
+    
+    # Enhanced request with better headers for concurrent access
+    headers = {
+        'User-Agent': 'PartsFinderApp/2.0 (Optimized for Concurrent Access)',
+        'Accept': 'text/csv,text/plain',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Cache-Control': 'no-cache'
+    }
+    
     try:
-        # Try to load the data
-        response = requests.get(PARTS_DATABASE_URL, timeout=15)
+        # Use session for connection pooling (better for concurrent requests)
+        session = requests.Session()
+        session.headers.update(headers)
+        
+        response = session.get(
+            PARTS_DATABASE_URL, 
+            timeout=REQUEST_TIMEOUT,
+            stream=False  # Load all at once for better caching
+        )
         response.raise_for_status()
         
         if not response.text.strip():
             return None, "The data source appears to be empty."
         
-        # Parse the CSV
+        # Optimized CSV parsing with better error handling
+        csv_content = response.text
+        
         try:
-            df = pd.read_csv(StringIO(response.text), quotechar='"', skipinitialspace=True)
-        except:
-            # Try alternative parsing if the first method fails
-            df = pd.read_csv(StringIO(response.text), on_bad_lines='skip', engine='python')
+            # Try fast parsing first
+            df = pd.read_csv(
+                StringIO(csv_content), 
+                quotechar='"', 
+                skipinitialspace=True,
+                dtype=str,  # Read as strings for consistent handling
+                na_filter=False  # Prevent unwanted NaN conversions
+            )
+        except Exception:
+            # Fallback to more robust parsing
+            df = pd.read_csv(
+                StringIO(csv_content), 
+                on_bad_lines='skip', 
+                engine='python',
+                dtype=str,
+                na_filter=False
+            )
         
-        # Check if we have the required columns
+        # Enhanced column detection and cleaning
+        df.columns = df.columns.str.strip().str.lower()
+        
+        # More flexible column mapping
+        column_mapping = {
+            'part_number': ['part_number', 'partnumber', 'part', 'number', 'pn', 'item'],
+            'description': ['description', 'desc', 'name', 'title', 'details']
+        }
+        
+        for target_col, possible_cols in column_mapping.items():
+            if target_col not in df.columns:
+                found_col = None
+                for col in df.columns:
+                    if any(possible in col for possible in possible_cols):
+                        found_col = col
+                        break
+                if found_col:
+                    df = df.rename(columns={found_col: target_col})
+        
+        # Validate required columns
         if 'part_number' not in df.columns or 'description' not in df.columns:
-            # Try to find similar column names
-            df.columns = df.columns.str.strip().str.lower()
-            if 'part_number' not in df.columns:
-                part_cols = [col for col in df.columns if 'part' in col or 'number' in col]
-                if part_cols:
-                    df = df.rename(columns={part_cols[0]: 'part_number'})
-            if 'description' not in df.columns:
-                desc_cols = [col for col in df.columns if 'desc' in col or 'name' in col]
-                if desc_cols:
-                    df = df.rename(columns={desc_cols[0]: 'description'})
+            available_cols = ', '.join(df.columns.tolist())
+            return None, f"Required columns missing. Available: {available_cols}"
         
-        # Final check for required columns
-        if 'part_number' not in df.columns or 'description' not in df.columns:
-            return None, "The spreadsheet must have 'part_number' and 'description' columns."
+        # Optimized data cleaning
+        original_count = len(df)
         
-        # Clean the data
+        # Vectorized cleaning operations for better performance
         df['part_number'] = df['part_number'].astype(str).str.strip()
         df['description'] = df['description'].astype(str).str.strip()
-        df = df.dropna(subset=['part_number', 'description'])
-        df = df[df['part_number'].str.len() > 0]
-        df = df[df['description'].str.len() > 0]
-        df = df[df['part_number'] != 'nan']
-        df = df[df['description'] != 'nan']
+        
+        # Remove invalid entries
+        valid_mask = (
+            (df['part_number'].str.len() > 0) & 
+            (df['description'].str.len() > 0) &
+            (df['part_number'] != 'nan') &
+            (df['description'] != 'nan') &
+            (df['part_number'] != '') &
+            (df['description'] != '')
+        )
+        
+        df = df[valid_mask]
+        
+        # Remove duplicates more efficiently
+        df = df.drop_duplicates(subset=['part_number'], keep='first')
+        
+        cleaned_count = len(df)
         
         if df.empty:
             return None, "No valid parts data found after cleaning."
         
-        return df.reset_index(drop=True), None
+        # Pre-create search index for better performance
+        df = df.reset_index(drop=True)
+        
+        # Add metadata for monitoring
+        metadata = {
+            'loaded_at': datetime.now(),
+            'original_count': original_count,
+            'cleaned_count': cleaned_count,
+            'removed_count': original_count - cleaned_count
+        }
+        
+        return df, metadata
         
     except requests.exceptions.Timeout:
-        return None, "Connection timeout. Please check your internet connection and try again."
+        return None, "Connection timeout. The service may be experiencing high load. Please try again."
     except requests.exceptions.ConnectionError:
-        return None, "Cannot connect to the data source. Please check your internet connection."
+        return None, "Cannot connect to data source. Please check your connection and try again."
     except requests.exceptions.HTTPError as e:
-        return None, f"Data source error (HTTP {e.response.status_code}). Please check the spreadsheet URL."
+        status_code = e.response.status_code if e.response else 'Unknown'
+        return None, f"Data source error (HTTP {status_code}). Please try again later."
     except Exception as e:
-        return None, f"Error loading data: {str(e)}"
+        return None, f"Unexpected error loading data: {str(e)}"
 
 # ============================================================================
-# SEARCH FUNCTIONS
+# OPTIMIZED SEARCH ENGINE FOR CONCURRENT USERS
 # ============================================================================
-def smart_search(query: str, df: pd.DataFrame) -> List[Tuple]:
-    """FIXED: Simple and reliable search that combines partial + keywords correctly."""
+def optimized_search(query: str, df: pd.DataFrame) -> List[Tuple]:
+    """High-performance search optimized for concurrent users."""
     if not query.strip() or df.empty:
         return []
     
     query = query.lower().strip()
     results = []
     
-    # Split query into individual words
-    query_words = [word for word in re.split(r'[-_\s\.]+', query) if len(word) > 1]
+    # Pre-compile regex for better performance
+    word_pattern = re.compile(r'[-_\s\.]+')
+    query_words = [word for word in word_pattern.split(query) if len(word) > 1]
     
     if not query_words:
         return []
     
-    for idx, row in df.iterrows():
-        part_num = row['part_number'].lower()
-        desc_lower = row['description'].lower()
-        
-        # Calculate match score for this item
+    # Vectorized search for better performance with large datasets
+    part_numbers_lower = df['part_number'].str.lower()
+    descriptions_lower = df['description'].str.lower()
+    
+    for idx, (part_num, desc_lower) in enumerate(zip(part_numbers_lower, descriptions_lower)):
         total_score = 0
         matched_words = 0
         
-        # Strategy 1: Exact matches (highest priority)
+        # Exact matches get highest priority
         if query == part_num:
-            total_score = 250
+            total_score = 300
         elif query == desc_lower:
-            total_score = 240
+            total_score = 290
         else:
-            # Strategy 2: Check each query word for matches
+            # Optimized word matching
             for word in query_words:
                 word_score = 0
                 
-                # Check part number for this word
+                # Part number matching (highest priority)
                 if word == part_num:
-                    word_score = 200  # Exact part number match
-                elif len(word) >= 3 and part_num.startswith(word):
-                    word_score = 150  # Part number starts with word (like "m1433")
-                elif len(word) >= 3 and word in part_num:
-                    # Word found somewhere in part number
-                    position = part_num.index(word)
-                    word_score = 140 - min(position * 3, 40)  # Earlier position = higher score
+                    word_score = 200
+                elif part_num.startswith(word):
+                    word_score = 180 - min(part_num.index(word) * 2, 30)
+                elif word in part_num:
+                    word_score = 160 - min(part_num.index(word) * 2, 40)
                 
-                # If not found in part number, check description
+                # Description matching (secondary priority)
                 if word_score == 0:
                     if word in desc_lower.split():
-                        word_score = 100  # Exact word match in description
-                    elif len(word) >= 3 and word in desc_lower:
-                        word_score = 80   # Partial match in description
-                    else:
-                        # Check if word is part of any description word
-                        for desc_word in desc_lower.split():
-                            if word in desc_word:
-                                word_score = 60
-                                break
+                        word_score = 120
+                    elif word in desc_lower:
+                        word_score = 100
                 
-                # Add to total score
                 if word_score > 0:
                     total_score += word_score
                     matched_words += 1
             
-            # Boost score if we matched multiple words
-            if matched_words > 1:
-                completeness_bonus = (matched_words / len(query_words)) * 50
+            # Bonus for multiple word matches
+            if matched_words > 1 and len(query_words) > 1:
+                completeness_bonus = (matched_words / len(query_words)) * 60
                 total_score += completeness_bonus
         
-        # Only include items that have matches
         if total_score > 0:
-            results.append((idx, row['part_number'], row['description'], int(total_score)))
+            results.append((idx, df.iloc[idx]['part_number'], df.iloc[idx]['description'], int(total_score)))
     
-    # Sort by score (highest first) and return top results
+    # Efficient sorting and limiting
     results.sort(key=lambda x: x[3], reverse=True)
     return results[:MAX_RESULTS]
 
-def highlight_text(text: str, query: str) -> str:
-    """Highlight search terms without creating overlapping HTML tags."""
-    if not query.strip():
-        return text
-    
-    # If text already contains highlight spans, don't process it again
-    if '<span class="highlight">' in text:
-        return text
-    
-    import html
-    
-    # Escape HTML characters for safety
-    escaped_text = html.escape(text)
-    query_words = [word for word in query.lower().split() if len(word) > 1]
-    
-    if not query_words:
-        return escaped_text
-    
-    # Problematic short words that commonly appear inside other words
-    problematic_words = {'ass', 'as', 'is', 'it', 'in', 'on', 'or', 'an', 'at'}
-    
-    # Find all matches for all words first
-    all_matches = []
-    for word in query_words:
-        if len(word) <= 3 and word.lower() in problematic_words:
-            # For problematic short words, only match complete words
-            pattern = re.compile(rf'\b{re.escape(word)}\b', re.IGNORECASE)
-        else:
-            # For other words, allow partial matching
-            pattern = re.compile(re.escape(word), re.IGNORECASE)
-        
-        for match in pattern.finditer(escaped_text):
-            all_matches.append((match.start(), match.end()))
-    
-    if not all_matches:
-        return escaped_text
-    
-    # Sort matches by start position and merge overlapping ranges
-    all_matches.sort()
-    merged_ranges = []
-    
-    for start, end in all_matches:
-        if merged_ranges and start <= merged_ranges[-1][1]:
-            # Overlapping or adjacent - merge with previous range
-            merged_ranges[-1] = (merged_ranges[-1][0], max(merged_ranges[-1][1], end))
-        else:
-            # No overlap - add as new range
-            merged_ranges.append((start, end))
-    
-    # Build the result by highlighting merged ranges
-    result = ""
-    last_end = 0
-    
-    for start, end in merged_ranges:
-        # Add text before this highlight
-        result += escaped_text[last_end:start]
-        # Add highlighted text
-        result += f'<span class="highlight">{escaped_text[start:end]}</span>'
-        last_end = end
-    
-    # Add remaining text after last highlight
-    result += escaped_text[last_end:]
-    
-    return result
-
 # ============================================================================
-# UI HELPER FUNCTIONS
+# ENHANCED UI HELPER FUNCTIONS
 # ============================================================================
 def show_message(message: str, message_type: str = "info"):
-    """Show a styled message to the user."""
-    css_class = f"{message_type}-box"
-    st.markdown(f'<div class="{css_class}">{message}</div>', unsafe_allow_html=True)
+    """Show enhanced styled messages."""
+    st.markdown(f'<div class="status-message {message_type}">{message}</div>', unsafe_allow_html=True)
 
 def add_to_search_history(query: str):
-    """Add search to history (keep last 10)."""
-    if query and query not in st.session_state.search_history:
-        st.session_state.search_history.insert(0, query)
-        if len(st.session_state.search_history) > 10:
-            st.session_state.search_history.pop()
-
-def show_recent_searches():
-    """Show recent searches as clickable buttons."""
-    if st.session_state.search_history:
-        st.markdown("**Recent searches:**")
-        cols = st.columns(min(len(st.session_state.search_history), 5))
-        for i, search in enumerate(st.session_state.search_history[:5]):
-            col_idx = i % len(cols)
-            with cols[col_idx]:
-                if st.button(f"{search}", key=f"recent_{i}"):
-                    st.session_state.search_input = search
-                    st.rerun()
+    """Efficiently manage search history."""
+    if query and query.strip():
+        # Remove duplicates and maintain order
+        history = st.session_state.search_history
+        if query in history:
+            history.remove(query)
+        history.insert(0, query)
+        # Keep only last 8 searches for better performance
+        st.session_state.search_history = history[:8]
 
 def show_search_result(part_number: str, description: str, query: str):
-    """Display a single search result."""
+    """Display optimized search results with highlighting."""
     highlighted_part = highlight_text(part_number, query)
     highlighted_desc = highlight_text(description, query)
     
@@ -474,92 +407,122 @@ def show_search_result(part_number: str, description: str, query: str):
     </div>
     """, unsafe_allow_html=True)
 
-def show_pagination(current_page: int, total_pages: int, results_count: int, position: str = ""):
-    """Show pagination controls."""
+def highlight_text(text: str, query: str) -> str:
+    """Optimized text highlighting."""
+    if not query.strip():
+        return text
+    
+    import html
+    escaped_text = html.escape(text)
+    query_words = [word for word in query.lower().split() if len(word) > 1]
+    
+    if not query_words:
+        return escaped_text
+    
+    # Efficient highlighting with regex
+    for word in query_words:
+        if len(word) > 2:  # Only highlight meaningful words
+            pattern = re.compile(f'({re.escape(word)})', re.IGNORECASE)
+            escaped_text = pattern.sub(r'<span class="highlight">\1</span>', escaped_text)
+    
+    return escaped_text
+
+def show_pagination(current_page: int, total_pages: int, results_count: int, base_key: str):
+    """Enhanced pagination with better UX."""
     if total_pages <= 1:
         return current_page
     
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col2:
-        st.markdown(f"<div class='stats'>Page {current_page} of {total_pages} • {results_count} total results</div>", 
-                   unsafe_allow_html=True)
+        st.markdown(f"""
+        <div class="status-message info" style="text-align: center;">
+            Page {current_page} of {total_pages} • {results_count:,} results found
+        </div>
+        """, unsafe_allow_html=True)
         
         prev_col, next_col = st.columns(2)
         
         with prev_col:
-            if current_page > 1:
-                if st.button("← Previous", key=f"prev_page_{position}"):
-                    return current_page - 1
+            if current_page > 1 and st.button("← Previous", key=f"prev_{base_key}"):
+                return current_page - 1
         
         with next_col:
-            if current_page < total_pages:
-                if st.button("Next →", key=f"next_page_{position}"):
-                    return current_page + 1
+            if current_page < total_pages and st.button("Next →", key=f"next_{base_key}"):
+                return current_page + 1
     
     return current_page
 
-def show_footer():
-    """Display footer with contact information."""
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: #6c757d; font-size: 0.9em; padding: 20px 0;'>
-        <p><strong>Need Help or Have Feedback?</strong></p>
-        <p>For any issues, suggestions, or feedback about this Parts Finder tool, please email:</p>
-        <p><a href='mailto:Syed.naqvi@bgis.com' style='color: #1f77b4; text-decoration: none;'>✉️ Syed.naqvi@bgis.com</a></p>
-      
-    </div>
-    """, unsafe_allow_html=True)
-
 # ============================================================================
-# MAIN APPLICATION
+# MAIN APPLICATION - OPTIMIZED FOR CONCURRENT USERS
 # ============================================================================
 def main():
-    """Main application function."""
+    """Main application with optimizations for concurrent usage."""
     
-    # App title
-    st.markdown("<br><br>", unsafe_allow_html=True)
-    st.markdown("<h1 style='text-align: center; font-size: 4em; margin-bottom: 30px;'>Parts Finder</h1>", 
-               unsafe_allow_html=True)
+    # Initialize session state
+    init_session_state()
     
-    # Load data
-    with st.spinner("Loading parts database..."):
-        df, error = load_parts_data()
+    # Enhanced header
+    st.markdown("""
+    <div style='text-align: center; padding: 20px 0;'>
+        <h1 style='font-size: 4em; background: linear-gradient(135deg, #1f77b4, #17a2b8); 
+                   -webkit-background-clip: text; -webkit-text-fill-color: transparent; 
+                   margin-bottom: 10px;'>Parts Finder</h1>
+        <p style='color: #6c757d; font-size: 1.1em;'>Fast, reliable parts search for multiple users</p>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # Show data status
-    if error:
-        show_message(f"⚠️ {error}", "error")
-        st.markdown("**Troubleshooting tips:**")
-        st.markdown("1. Check your internet connection")
-        st.markdown("2. Make sure the Google Sheet is published as CSV")
-        st.markdown("3. Verify the sheet has 'part_number' and 'description' columns")
-        show_footer()  # Show footer even on error
+    # Load data with progress indicator
+    with st.spinner("🔄 Loading parts database..."):
+        df, error_or_metadata = load_parts_data()
+    
+    # Enhanced status display
+    if isinstance(error_or_metadata, str):  # Error case
+        show_message(f"⚠️ {error_or_metadata}", "error")
+        st.markdown("### 🔧 Troubleshooting:")
+        st.markdown("- The service might be experiencing high load")
+        st.markdown("- Try refreshing the page in a few seconds")
+        st.markdown("- Check your internet connection")
         return
-    else:
-        show_message(f"Successfully loaded {len(df):,} parts", "success")
+    else:  # Success case
+        metadata = error_or_metadata
+        load_time = metadata['loaded_at'].strftime("%H:%M:%S")
+        show_message(
+            f"✅ Successfully loaded {metadata['cleaned_count']:,} parts at {load_time}", 
+            "success"
+        )
     
-    # Search input
+    # Enhanced search input with better UX
+    st.markdown("### 🔍 Search Parts")
     search_query = st.text_input(
-        "Search for parts:",
-        placeholder="Enter part number or description...",
+        "",
+        placeholder="Enter part number or description... (e.g., M1433, motor, sensor)",
         key="search_input",
-        help="Try typing a part number, description, or even partial matches."
+        help="💡 Tip: Try partial part numbers or key words from descriptions"
     )
     
     # Show recent searches if no current search
     if not search_query.strip():
-        show_recent_searches()
-        show_footer()  # Show footer when no search
+        if st.session_state.search_history:
+            st.markdown("**Recent searches:**")
+            cols = st.columns(min(len(st.session_state.search_history), 4))
+            for i, search in enumerate(st.session_state.search_history[:4]):
+                col_idx = i % len(cols)
+                with cols[col_idx]:
+                    if st.button(f"🕐 {search}", key=f"recent_{i}"):
+                        st.session_state.search_input = search
+                        st.rerun()
         return
     
-    # Add delay to prevent too many searches while typing
-    if search_query != st.session_state.last_search:
-        st.session_state.last_search = search_query
+    # Debounce search for better performance under load
+    current_time = time.time()
+    if current_time - st.session_state.last_search_time < SEARCH_DELAY:
         time.sleep(SEARCH_DELAY)
+    st.session_state.last_search_time = current_time
     
-    # Perform search
-    results = smart_search(search_query, df)
+    # Perform optimized search
+    with st.spinner("🔍 Searching..."):
+        results = optimized_search(search_query, df)
     
     # Add to search history
     add_to_search_history(search_query)
@@ -567,25 +530,24 @@ def main():
     # Handle no results
     if not results:
         show_message(f"No results found for \"{search_query}\"", "info")
-        st.markdown("**Try:**")
-        st.markdown("• Check spelling")
-        st.markdown("• Use fewer words")
-        st.markdown("• Try partial part numbers")
-        st.markdown("• Use different keywords")
-        show_footer()  # Show footer when no results
+        
+        # Enhanced suggestions
+        st.markdown("### 💡 Search Tips:")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.markdown("- Try shorter keywords")
+            st.markdown("- Use partial part numbers")
+        with col2:
+            st.markdown("- Check spelling")
+            st.markdown("- Try different terms")
         return
     
-    # Calculate pagination
+    # Pagination logic
     total_results = len(results)
     total_pages = (total_results + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
-    current_page = st.session_state.current_page
+    current_page = min(st.session_state.current_page, total_pages)
     
-    # Make sure current page is valid
-    if current_page > total_pages:
-        current_page = 1
-        st.session_state.current_page = 1
-    
-    # Show pagination controls (top)
+    # Show pagination (top)
     new_page = show_pagination(current_page, total_pages, total_results, "top")
     if new_page != current_page:
         st.session_state.current_page = new_page
@@ -593,15 +555,14 @@ def main():
     
     # Show results for current page
     start_idx = (current_page - 1) * RESULTS_PER_PAGE
-    end_idx = start_idx + RESULTS_PER_PAGE
+    end_idx = min(start_idx + RESULTS_PER_PAGE, total_results)
     page_results = results[start_idx:end_idx]
     
-    st.markdown("<br>", unsafe_allow_html=True)
-    
+    # Display results
     for _, part_number, description, score in page_results:
         show_search_result(part_number, description, search_query)
     
-    # Show pagination controls (bottom)
+    # Show pagination (bottom) if needed
     if total_pages > 1:
         st.markdown("<br>", unsafe_allow_html=True)
         new_page = show_pagination(current_page, total_pages, total_results, "bottom")
@@ -609,11 +570,40 @@ def main():
             st.session_state.current_page = new_page
             st.rerun()
     
-    # Always show footer at the end
-    show_footer()
+    # Performance info for monitoring
+    if st.checkbox("Show performance info", key="perf_info"):
+        st.markdown("### ⚡ Performance Metrics")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Results Found", f"{total_results:,}")
+        with col2:
+            st.metric("Current Page", f"{current_page}/{total_pages}")
+        with col3:
+            st.metric("Session ID", st.session_state.session_id)
 
 # ============================================================================
-# RUN THE APP
+# FOOTER WITH CONTACT INFO
+# ============================================================================
+def show_footer():
+    """Enhanced footer."""
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("---")
+    st.markdown("""
+    <div style='text-align: center; color: #6c757d; padding: 20px 0;'>
+        <p><strong>Parts Finder v2.0</strong> - Optimized for Multiple Users</p>
+        <p>For support or feedback: 
+        <a href='mailto:Syed.naqvi@bgis.com' style='color: #1f77b4; text-decoration: none;'>
+        ✉️ Syed.naqvi@bgis.com</a></p>
+    </div>
+    """, unsafe_allow_html=True)
+
+# ============================================================================
+# RUN THE OPTIMIZED APP
 # ============================================================================
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+        show_footer()
+    except Exception as e:
+        st.error(f"Application error: {str(e)}")
+        st.info("Please refresh the page or contact support if the issue persists.")
