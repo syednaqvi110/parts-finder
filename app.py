@@ -11,7 +11,7 @@ from io import StringIO
 # ============================================================================
 # SIMPLE CONFIGURATION - JUST CHANGE THE URL BELOW
 # ============================================================================
-PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSc2GTX3jc2NjJlR_zWVqDyTGf6bhCVc4GGaN_WMQDDlXZ8ofJVh5cbCPAD0d0lHY0anWXreyMdon33/pub?output=csv"
+PARTS_DATABASE_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSA2L_Rv8f51HXmdxinYgPzGQtEDmIsmlOmvVwQwZl1GstSq8i7LDvFdjkysJpdH4iKGZaX2q33_01h/pub?output=csv"
 
 # Basic settings (you can adjust these if needed)
 RESULTS_PER_PAGE = 15           # How many results to show per page
