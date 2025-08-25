@@ -166,12 +166,40 @@ def load_parts_data():
         if not os.path.exists(PARTS_DATA_FILE):
             return None, f"Parts data file '{PARTS_DATA_FILE}' not found. Please ensure the file is in the same directory as app.py"
         
-        # Load CSV file with optimized settings
-        df = pd.read_csv(
-            PARTS_DATA_FILE,
-            dtype=str,  # Read as strings for consistent handling
-            na_filter=False  # Prevent unwanted NaN conversions
-        )
+        # Load CSV file with robust settings to handle Google Sheets copy-paste issues
+        try:
+            # First attempt: Standard CSV reading
+            df = pd.read_csv(
+                PARTS_DATA_FILE,
+                dtype=str,
+                na_filter=False,
+                encoding='utf-8'
+            )
+        except Exception:
+            try:
+                # Second attempt: More robust parsing for problematic data
+                df = pd.read_csv(
+                    PARTS_DATA_FILE,
+                    dtype=str,
+                    na_filter=False,
+                    encoding='utf-8',
+                    quotechar='"',
+                    skipinitialspace=True,
+                    on_bad_lines='skip'  # Skip problematic lines
+                )
+            except Exception:
+                # Third attempt: Use Python engine with maximum flexibility
+                df = pd.read_csv(
+                    PARTS_DATA_FILE,
+                    dtype=str,
+                    na_filter=False,
+                    encoding='utf-8',
+                    engine='python',
+                    quotechar='"',
+                    skipinitialspace=True,
+                    on_bad_lines='skip',
+                    sep=','
+                )
         
         # Clean column names
         df.columns = df.columns.str.strip().str.lower()
