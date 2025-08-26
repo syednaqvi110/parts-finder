@@ -190,21 +190,22 @@ def show_search_result(part_number: str, description: str, query: str):
     </div>
     """, unsafe_allow_html=True)
 
-def show_pagination(current_page: int, total_pages: int, total_results: int):
+def show_pagination(current_page: int, total_pages: int, total_results: int, key_prefix: str = ""):
+    """Show pagination controls with unique keys to avoid duplicate element IDs."""
     if total_pages <= 1:
         return current_page
     
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col1:
-        if current_page > 1 and st.button("← Previous"):
+        if current_page > 1 and st.button("← Previous", key=f"{key_prefix}_prev"):
             return current_page - 1
     
     with col2:
         st.write(f"Page {current_page} of {total_pages} ({total_results} results)")
     
     with col3:
-        if current_page < total_pages and st.button("Next →"):
+        if current_page < total_pages and st.button("Next →", key=f"{key_prefix}_next"):
             return current_page + 1
     
     return current_page
@@ -246,7 +247,7 @@ def main():
     current_page = min(st.session_state.current_page, total_pages)
     
     # Show pagination (top)
-    new_page = show_pagination(current_page, total_pages, total_results)
+    new_page = show_pagination(current_page, total_pages, total_results, "top")
     if new_page != current_page:
         st.session_state.current_page = new_page
         st.rerun()
@@ -262,7 +263,7 @@ def main():
     # Show pagination (bottom)
     if total_pages > 1:
         st.write("")  # Spacing
-        new_page = show_pagination(current_page, total_pages, total_results)
+        new_page = show_pagination(current_page, total_pages, total_results, "bottom")
         if new_page != current_page:
             st.session_state.current_page = new_page
             st.rerun()
