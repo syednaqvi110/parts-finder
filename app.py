@@ -64,6 +64,8 @@ st.markdown("""
 def init_session_state():
     if 'current_page' not in st.session_state:
         st.session_state.current_page = 1
+    if 'last_search_query' not in st.session_state:
+        st.session_state.last_search_query = ""
 
 # ============================================================================
 # DATA LOADING
@@ -230,6 +232,11 @@ def main():
     
     # Search input
     search_query = st.text_input("Search parts:", placeholder="Enter part number or description...")
+    
+    # Reset pagination when search query changes
+    if search_query != st.session_state.last_search_query:
+        st.session_state.current_page = 1
+        st.session_state.last_search_query = search_query
     
     if not search_query.strip():
         return
