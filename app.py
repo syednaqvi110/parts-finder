@@ -25,7 +25,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# Simple CSS - no fancy styling
+# Simple CSS + JS for dynamic search-as-you-type
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
@@ -56,6 +56,38 @@ st.markdown("""
         color: #333;
     }
 </style>
+
+<script>
+(function() {
+    var debounceTimer = null;
+
+    function attachDynamicSearch(input) {
+        if (input.dataset.dynamicSearch) return;
+        input.dataset.dynamicSearch = 'true';
+
+        input.addEventListener('input', function () {
+            clearTimeout(debounceTimer);
+            var self = this;
+            debounceTimer = setTimeout(function () {
+                // Simulate Enter keypress to trigger Streamlit rerun
+                self.dispatchEvent(new KeyboardEvent('keydown', {
+                    key: 'Enter', code: 'Enter', keyCode: 13,
+                    bubbles: true, cancelable: true
+                }));
+            }, 300);  // 300ms debounce — lower = snappier but more reruns
+        });
+    }
+
+    function scanForInputs() {
+        document.querySelectorAll('input[type="text"]').forEach(attachDynamicSearch);
+    }
+
+    // Run on load, then watch for Streamlit re-renders that swap in new inputs
+    scanForInputs();
+    var observer = new MutationObserver(scanForInputs);
+    observer.observe(document.body, { childList: true, subtree: true });
+})();
+</script>
 """, unsafe_allow_html=True)
 
 # ============================================================================
