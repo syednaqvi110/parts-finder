@@ -146,14 +146,8 @@ def search_parts(query: str, df: pd.DataFrame) -> List[Tuple]:
 
 
 def parts_search_function(query: str) -> List[str]:
-    """Called by st_searchbox on every keystroke. Returns dropdown suggestions."""
-    if not query or len(query.strip()) < 1:
-        return []
-    df, _ = load_parts_data()
-    if df is None:
-        return []
-    results = search_parts(query, df)
-    return [f"{r[1]}  —  {r[2]}" for r in results[:8]]
+    """Called by st_searchbox on every keystroke. No dropdown — results show below."""
+    return []
 
 # ============================================================================
 # DISPLAY FUNCTIONS
