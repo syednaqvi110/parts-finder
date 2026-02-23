@@ -51,6 +51,61 @@ st.markdown("""
         color: #333;
     }
 </style>
+
+<script>
+(function() {
+    var debounceTimer = null;
+    var attachedInput = null;
+
+    function simulateEnter(input) {
+        // Streamlit's React layer listens natively for Enter on text inputs
+        // This is NOT a synthetic DOM event — it dispatches a real KeyboardEvent
+        // that React's event delegation picks up correctly.
+        var enterDown = new KeyboardEvent('keydown', {
+            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+            bubbles: true, cancelable: true
+        });
+        var enterUp = new KeyboardEvent('keyup', {
+            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
+            bubbles: true, cancelable: true
+        });
+        input.dispatchEvent(enterDown);
+        input.dispatchEvent(enterUp);
+    }
+
+    function attachDebounce(input) {
+        if (attachedInput === input) return;  // already attached
+        attachedInput = input;
+
+        input.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(function() {
+                simulateEnter(input);
+            }, 300);
+        });
+
+        // Suppress actual Enter from causing double-fire
+        input.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e._synthetic) {
+                clearTimeout(debounceTimer);
+            }
+        });
+    }
+
+    function findAndAttach() {
+        // Find the first text input that isn't already handled
+        var input = document.querySelector('input[type="text"]');
+        if (input) attachDebounce(input);
+    }
+
+    // Watch for Streamlit DOM mutations (rerenders)
+    var observer = new MutationObserver(function() {
+        findAndAttach();
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    setTimeout(findAndAttach, 300);
+})();
+</script>
 """, unsafe_allow_html=True)
 
 # ============================================================================
@@ -65,7 +120,6 @@ def init_session_state():
         st.session_state.search_query = ""
 
 def on_search_change():
-    """Called on every keystroke — resets page when query changes."""
     new_query = st.session_state.search_input.strip()
     if new_query != st.session_state.last_search_query:
         st.session_state.current_page = 1
