@@ -1,6 +1,5 @@
 import streamlit as st
 import pandas as pd
-from streamlit_searchbox import st_searchbox
 import re
 import os
 from typing import List, Tuple
@@ -52,25 +51,6 @@ st.markdown("""
         color: #333;
     }
 </style>
-
-<script>
-(function() {
-    function focusSearchbox() {
-        // st_searchbox renders an <input> inside a div with role="combobox"
-        var input = document.querySelector('input[type="text"]');
-        if (input && document.activeElement !== input) {
-            input.focus();
-        }
-    }
-    // Re-focus after every Streamlit rerender
-    var observer = new MutationObserver(function() {
-        setTimeout(focusSearchbox, 50);
-    });
-    observer.observe(document.body, { childList: true, subtree: true });
-    // Also run immediately on load
-    setTimeout(focusSearchbox, 200);
-})();
-</script>
 """, unsafe_allow_html=True)
 
 # ============================================================================
@@ -81,6 +61,16 @@ def init_session_state():
         st.session_state.current_page = 1
     if 'last_search_query' not in st.session_state:
         st.session_state.last_search_query = ""
+    if 'search_query' not in st.session_state:
+        st.session_state.search_query = ""
+
+def on_search_change():
+    """Called on every keystroke — resets page when query changes."""
+    new_query = st.session_state.search_input.strip()
+    if new_query != st.session_state.last_search_query:
+        st.session_state.current_page = 1
+        st.session_state.last_search_query = new_query
+    st.session_state.search_query = new_query
 
 # ============================================================================
 # DATA LOADING
@@ -164,9 +154,6 @@ def search_parts(query: str, df: pd.DataFrame) -> List[Tuple]:
     return results[:MAX_RESULTS]
 
 
-def parts_search_function(query: str) -> List[str]:
-    """Called by st_searchbox on every keystroke. No dropdown — results show below."""
-    return []
 
 # ============================================================================
 # DISPLAY FUNCTIONS
@@ -221,22 +208,15 @@ def main():
     else:
         st.success(message)
 
-    # Live searchbox — calls parts_search_function on every keystroke
-    # default_use_searchterm=True means raw typed text is returned when
-    # nothing is selected from the dropdown, so we always have the query
-    selected = st_searchbox(
-        parts_search_function,
+    # Native text_input — no iframe, no focus loss, works with any amount of backspace
+    st.text_input(
+        "Search parts:",
         placeholder="Type part number or description...",
-        label="Search parts:",
-        key="parts_searchbox",
-        debounce=300,
-        rerun_on_update=True,
-        default_use_searchterm=True,
-        clear_on_submit=False,
-        edit_after_submit="current",
+        key="search_input",
+        on_change=on_search_change,
     )
 
-    search_query = (selected or "").strip()
+    search_query = st.session_state.search_query
 
     if search_query != st.session_state.last_search_query:
         st.session_state.current_page = 1
