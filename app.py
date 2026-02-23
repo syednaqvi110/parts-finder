@@ -50,60 +50,57 @@ st.markdown("""
     .part-description {
         color: #333;
     }
+
+    /* Hide the trigger button that sits right after the search input */
+    div[data-testid="stTextInput"] + div[data-testid="stButton"] > button {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0,0,0,0);
+        border: 0;
+    }
+    div[data-testid="stTextInput"] + div[data-testid="stButton"] {
+        height: 0;
+        overflow: hidden;
+        margin: 0;
+        padding: 0;
+    }
 </style>
 
 <script>
 (function() {
     var debounceTimer = null;
-    var attachedInput = null;
 
-    function simulateEnter(input) {
-        // Streamlit's React layer listens natively for Enter on text inputs
-        // This is NOT a synthetic DOM event — it dispatches a real KeyboardEvent
-        // that React's event delegation picks up correctly.
-        var enterDown = new KeyboardEvent('keydown', {
-            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
-            bubbles: true, cancelable: true
-        });
-        var enterUp = new KeyboardEvent('keyup', {
-            key: 'Enter', code: 'Enter', keyCode: 13, which: 13,
-            bubbles: true, cancelable: true
-        });
-        input.dispatchEvent(enterDown);
-        input.dispatchEvent(enterUp);
+    function clickHiddenButton() {
+        // Find the button container that immediately follows the text input container
+        var textInput = document.querySelector('div[data-testid="stTextInput"]');
+        if (!textInput) return;
+        var sibling = textInput.nextElementSibling;
+        while (sibling) {
+            var btn = sibling.querySelector('button');
+            if (btn) { btn.click(); return; }
+            sibling = sibling.nextElementSibling;
+        }
     }
 
-    function attachDebounce(input) {
-        if (attachedInput === input) return;  // already attached
-        attachedInput = input;
-
-        input.addEventListener('input', function() {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(function() {
-                simulateEnter(input);
-            }, 300);
-        });
-
-        // Suppress actual Enter from causing double-fire
-        input.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' && !e._synthetic) {
+    function attachDebounce() {
+        var inputs = document.querySelectorAll('input[type="text"]');
+        inputs.forEach(function(input) {
+            if (input._searchAttached) return;
+            input._searchAttached = true;
+            input.addEventListener('input', function() {
                 clearTimeout(debounceTimer);
-            }
+                debounceTimer = setTimeout(clickHiddenButton, 300);
+            });
         });
     }
 
-    function findAndAttach() {
-        // Find the first text input that isn't already handled
-        var input = document.querySelector('input[type="text"]');
-        if (input) attachDebounce(input);
-    }
-
-    // Watch for Streamlit DOM mutations (rerenders)
-    var observer = new MutationObserver(function() {
-        findAndAttach();
-    });
+    var observer = new MutationObserver(attachDebounce);
     observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(findAndAttach, 300);
+    setTimeout(attachDebounce, 300);
 })();
 </script>
 """, unsafe_allow_html=True)
@@ -116,15 +113,6 @@ def init_session_state():
         st.session_state.current_page = 1
     if 'last_search_query' not in st.session_state:
         st.session_state.last_search_query = ""
-    if 'search_query' not in st.session_state:
-        st.session_state.search_query = ""
-
-def on_search_change():
-    new_query = st.session_state.search_input.strip()
-    if new_query != st.session_state.last_search_query:
-        st.session_state.current_page = 1
-        st.session_state.last_search_query = new_query
-    st.session_state.search_query = new_query
 
 # ============================================================================
 # DATA LOADING
@@ -267,10 +255,14 @@ def main():
         "Search parts:",
         placeholder="Type part number or description...",
         key="search_input",
-        on_change=on_search_change,
     )
 
-    search_query = st.session_state.search_query
+    # Hidden button — JS clicks this after 300ms debounce to trigger a rerun
+    # The rerun then reads the current search_input value from session state
+    st.button("\u200b", key="search_trigger")  # zero-width space label
+
+    # Read value directly — always current after any rerun
+    search_query = st.session_state.get("search_input", "").strip()
 
     if search_query != st.session_state.last_search_query:
         st.session_state.current_page = 1
