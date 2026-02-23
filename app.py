@@ -52,6 +52,25 @@ st.markdown("""
         color: #333;
     }
 </style>
+
+<script>
+(function() {
+    function focusSearchbox() {
+        // st_searchbox renders an <input> inside a div with role="combobox"
+        var input = document.querySelector('input[type="text"]');
+        if (input && document.activeElement !== input) {
+            input.focus();
+        }
+    }
+    // Re-focus after every Streamlit rerender
+    var observer = new MutationObserver(function() {
+        setTimeout(focusSearchbox, 50);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    // Also run immediately on load
+    setTimeout(focusSearchbox, 200);
+})();
+</script>
 """, unsafe_allow_html=True)
 
 # ============================================================================
