@@ -217,46 +217,42 @@ def main():
         edit_after_submit="current",
     )
 
-    if not selected:
-        return
+    search_query = (selected or "").strip()
 
-    search_query = selected.strip()
-    if not search_query:
-        return
-
-    # Reset pagination if query changed
     if search_query != st.session_state.last_search_query:
         st.session_state.current_page = 1
         st.session_state.last_search_query = search_query
 
-    # Full results list
-    results = search_parts(search_query, df)
+    if not search_query:
+        pass  # Box is empty — stay here, keep focus, show nothing
+    else:
+        # Full results list
+        results = search_parts(search_query, df)
 
-    if not results:
-        st.info("No results found. Try different keywords.")
-        return
+        if not results:
+            st.info("No results found. Try different keywords.")
+        else:
+            total_results = len(results)
+            total_pages = (total_results + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
+            current_page = min(st.session_state.current_page, total_pages)
 
-    total_results = len(results)
-    total_pages = (total_results + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
-    current_page = min(st.session_state.current_page, total_pages)
+            new_page = show_pagination(current_page, total_pages, total_results, "top")
+            if new_page != current_page:
+                st.session_state.current_page = new_page
+                st.rerun()
 
-    new_page = show_pagination(current_page, total_pages, total_results, "top")
-    if new_page != current_page:
-        st.session_state.current_page = new_page
-        st.rerun()
+            start_idx = (current_page - 1) * RESULTS_PER_PAGE
+            end_idx = min(start_idx + RESULTS_PER_PAGE, total_results)
 
-    start_idx = (current_page - 1) * RESULTS_PER_PAGE
-    end_idx = min(start_idx + RESULTS_PER_PAGE, total_results)
+            for _, part_number, description, _ in results[start_idx:end_idx]:
+                show_search_result(part_number, description, search_query)
 
-    for _, part_number, description, _ in results[start_idx:end_idx]:
-        show_search_result(part_number, description, search_query)
-
-    if total_pages > 1:
-        st.write("")
-        new_page = show_pagination(current_page, total_pages, total_results, "bottom")
-        if new_page != current_page:
-            st.session_state.current_page = new_page
-            st.rerun()
+            if total_pages > 1:
+                st.write("")
+                new_page = show_pagination(current_page, total_pages, total_results, "bottom")
+                if new_page != current_page:
+                    st.session_state.current_page = new_page
+                    st.rerun()
 
 # ============================================================================
 # CONTACT INFO
