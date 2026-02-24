@@ -329,6 +329,15 @@ html = """
     } else {
       paginationEl.style.display = 'none';
     }
+    sendHeight();
+  }
+
+  function sendHeight() {
+    // Give the DOM one frame to finish painting, then report exact content height
+    requestAnimationFrame(function() {
+      var h = document.documentElement.scrollHeight;
+      window.parent.postMessage({ type: 'streamlit:setFrameHeight', height: h }, '*');
+    });
   }
 
   function changePage(delta) {
@@ -342,13 +351,16 @@ html = """
     debounceTimer = setTimeout(() => doSearch(val), 200);
   });
 
+  // Set correct height on first load (just the search bar, no results yet)
+  sendHeight();
+
 </script>
 </body>
 </html>
 """
 
 html = html.replace('PARTS_JSON_PLACEHOLDER', parts_json)
-components.html(html, height=5000, scrolling=False)
+components.html(html, height=200, scrolling=False)
 
 st.write("---")
 st.markdown(
