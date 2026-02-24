@@ -185,7 +185,7 @@ html = """
 <body>
 
 <input id="search-input" type="search" inputmode="search"
-  placeholder="Type part number or description..." autofocus autocomplete="off"
+  placeholder="Type part number or description" autofocus autocomplete="off"
   autocorrect="off" autocapitalize="off" spellcheck="false" />
 <div id="results-count"></div>
 <div id="results-list"></div>
