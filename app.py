@@ -372,7 +372,7 @@ html = """
 """
 
 html = html.replace('PARTS_JSON_PLACEHOLDER', parts_json)
-components.html(html, height=1650, scrolling=False)
+components.html(html, height=80, scrolling=False)
 
 st.write("---")
 st.markdown(
