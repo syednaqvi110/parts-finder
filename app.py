@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import re
 import os
@@ -21,6 +22,7 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
+# CSS only — scripts in st.markdown don't execute in Streamlit (React strips them)
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
@@ -51,58 +53,14 @@ st.markdown("""
         color: #333;
     }
 
-    /* Hide the trigger button that sits right after the search input */
-    div[data-testid="stTextInput"] + div[data-testid="stButton"] > button {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        padding: 0;
-        margin: -1px;
-        overflow: hidden;
-        clip: rect(0,0,0,0);
-        border: 0;
-    }
+    /* Collapse the hidden trigger button so it takes no space visually */
     div[data-testid="stTextInput"] + div[data-testid="stButton"] {
-        height: 0;
-        overflow: hidden;
-        margin: 0;
-        padding: 0;
+        height: 0 !important;
+        overflow: hidden !important;
+        margin: 0 !important;
+        padding: 0 !important;
     }
 </style>
-
-<script>
-(function() {
-    var debounceTimer = null;
-
-    function clickHiddenButton() {
-        // Find the button container that immediately follows the text input container
-        var textInput = document.querySelector('div[data-testid="stTextInput"]');
-        if (!textInput) return;
-        var sibling = textInput.nextElementSibling;
-        while (sibling) {
-            var btn = sibling.querySelector('button');
-            if (btn) { btn.click(); return; }
-            sibling = sibling.nextElementSibling;
-        }
-    }
-
-    function attachDebounce() {
-        var inputs = document.querySelectorAll('input[type="text"]');
-        inputs.forEach(function(input) {
-            if (input._searchAttached) return;
-            input._searchAttached = true;
-            input.addEventListener('input', function() {
-                clearTimeout(debounceTimer);
-                debounceTimer = setTimeout(clickHiddenButton, 300);
-            });
-        });
-    }
-
-    var observer = new MutationObserver(attachDebounce);
-    observer.observe(document.body, { childList: true, subtree: true });
-    setTimeout(attachDebounce, 300);
-})();
-</script>
 """, unsafe_allow_html=True)
 
 # ============================================================================
@@ -161,7 +119,7 @@ def load_parts_data():
         return None, f"Error: {str(e)}"
 
 # ============================================================================
-# SEARCHBOX FUNCTION (called on every keystroke)
+# SEARCH
 # ============================================================================
 def search_parts(query: str, df: pd.DataFrame) -> List[Tuple]:
     if not query or not query.strip() or df is None or df.empty:
@@ -194,8 +152,6 @@ def search_parts(query: str, df: pd.DataFrame) -> List[Tuple]:
 
     results.sort(key=lambda x: x[3], reverse=True)
     return results[:MAX_RESULTS]
-
-
 
 # ============================================================================
 # DISPLAY FUNCTIONS
@@ -236,6 +192,58 @@ def show_pagination(current_page: int, total_pages: int, total_results: int, key
     return current_page
 
 # ============================================================================
+# LIVE SEARCH JS INJECTOR
+# components.html() is the ONLY Streamlit method that actually executes JS.
+# It renders in a tiny hidden iframe; we use window.parent to reach the main page.
+# ============================================================================
+def inject_live_search_js():
+    components.html("""
+    <script>
+    (function() {
+        var debounceTimer = null;
+
+        function clickTriggerButton() {
+            var doc = window.parent.document;
+            // The trigger button sits immediately after the text input container
+            var textInput = doc.querySelector('div[data-testid="stTextInput"]');
+            if (!textInput) return;
+            var sibling = textInput.nextElementSibling;
+            while (sibling) {
+                var btn = sibling.querySelector('button');
+                if (btn) {
+                    btn.click();
+                    return;
+                }
+                sibling = sibling.nextElementSibling;
+            }
+        }
+
+        function attachToInputs() {
+            var doc = window.parent.document;
+            var inputs = doc.querySelectorAll('input[type="text"]');
+            inputs.forEach(function(input) {
+                if (input._liveSearchAttached) return;
+                input._liveSearchAttached = true;
+                input.addEventListener('input', function() {
+                    clearTimeout(debounceTimer);
+                    debounceTimer = setTimeout(clickTriggerButton, 300);
+                });
+            });
+        }
+
+        // Re-attach after every Streamlit rerender (MutationObserver on parent body)
+        var observer = new MutationObserver(function() {
+            attachToInputs();
+        });
+        observer.observe(window.parent.document.body, { childList: true, subtree: true });
+
+        // Initial attach
+        setTimeout(attachToInputs, 500);
+    })();
+    </script>
+    """, height=0)
+
+# ============================================================================
 # MAIN APPLICATION
 # ============================================================================
 def main():
@@ -250,18 +258,22 @@ def main():
     else:
         st.success(message)
 
-    # Native text_input — no iframe, no focus loss, works with any amount of backspace
+    # Native text_input — no iframe, no focus loss on backspace
     st.text_input(
         "Search parts:",
         placeholder="Type part number or description...",
         key="search_input",
     )
 
-    # Hidden button — JS clicks this after 300ms debounce to trigger a rerun
-    # The rerun then reads the current search_input value from session state
-    st.button("\u200b", key="search_trigger")  # zero-width space label
+    # Hidden trigger button — JS clicks this after 300ms debounce to force a rerun.
+    # CSS collapses it to height:0. JS .click() still works (only display:none blocks it).
+    st.button("search_trigger", key="search_trigger")
 
-    # Read value directly — always current after any rerun
+    # Inject JS via components.html (actually executes, unlike st.markdown scripts)
+    inject_live_search_js()
+
+    # After the button click triggers a rerun, session_state.search_input
+    # already holds the latest typed value — Streamlit syncs all widget states first.
     search_query = st.session_state.get("search_input", "").strip()
 
     if search_query != st.session_state.last_search_query:
@@ -269,9 +281,8 @@ def main():
         st.session_state.last_search_query = search_query
 
     if not search_query:
-        pass  # Box is empty — stay here, keep focus, show nothing
+        pass
     else:
-        # Full results list
         results = search_parts(search_query, df)
 
         if not results:
