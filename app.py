@@ -76,6 +76,9 @@ html = """
     padding: 12px;
     background: transparent;
   }
+  /* Hide inner iframe scrollbar — page scroll handles everything */
+  html::-webkit-scrollbar { display: none; }
+  html { -ms-overflow-style: none; scrollbar-width: none; }
 
   /* === BASE STYLES (desktop) — unchanged from original === */
   #search-input {
@@ -199,16 +202,6 @@ html = """
   const PER_PAGE = 15;
   const MAX_RESULTS = 100;
 
-  // Dynamically size the iframe based on actual content after every render
-  // Uses postMessage to Streamlit — called via requestAnimationFrame so DOM is fully painted
-  function sendHeight() {
-    requestAnimationFrame(function() {
-      var h = document.body.offsetHeight + 32; // +32px buffer for safety
-      window.parent.postMessage({ type: 'streamlit:setFrameHeight', height: h }, '*');
-    });
-  }
-  // Fire on load immediately
-  window.addEventListener('load', function() { setTimeout(sendHeight, 100); });
 
   let currentResults = [];
   let currentPage = 1;
@@ -325,16 +318,14 @@ html = """
       listEl.innerHTML = '';
       emptyEl.style.display = 'none';
       paginationEl.style.display = 'none';
-      sendHeight();
-      return;
+        return;
     }
     if (total === 0) {
       countEl.textContent = '';
       listEl.innerHTML = '';
       emptyEl.style.display = 'block';
       paginationEl.style.display = 'none';
-      sendHeight();
-      return;
+        return;
     }
     emptyEl.style.display = 'none';
     countEl.textContent = total + ' result' + (total !== 1 ? 's' : '') + ' found';
@@ -372,7 +363,7 @@ html = """
 """
 
 html = html.replace('PARTS_JSON_PLACEHOLDER', parts_json)
-components.html(html, height=80, scrolling=False)
+components.html(html, height=1300, scrolling=True)
 
 st.write("---")
 st.markdown(
