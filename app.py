@@ -106,25 +106,7 @@ html = """
   .part-desc { color: #333; font-size: 13px; }
   .highlight { background: #ffff99; font-weight: bold; }
 
-  #pagination {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-    font-size: 13px;
-    color: #555;
-  }
-  #pagination button {
-    padding: 5px 12px;
-    border: 1px solid #ccc;
-    border-radius: 4px;
-    background: white;
-    cursor: pointer;
-    font-size: 13px;
-  }
-  #pagination button:disabled { opacity: 0.4; cursor: default; }
-  #pagination button:hover:not(:disabled) { background: #f0f0f0; }
-  #page-info { font-size: 13px; color: #555; }
+
 
   #empty-msg { color: #888; font-size: 14px; margin-top: 12px; }
 
@@ -152,24 +134,7 @@ html = """
     .part-desc   { font-size: 14px; line-height: 1.4; }
     .highlight   { border-radius: 2px; }
 
-    #pagination {
-      justify-content: space-between;
-      margin-top: 14px;
-      padding: 4px 0 8px;
-    }
-    #pagination button {
-      min-height: 44px;     /* Apple HIG minimum tap target */
-      padding: 0 20px;
-      border-radius: 8px;
-      font-size: 15px;
-      font-weight: 500;
-      color: #0066cc;
-      -webkit-tap-highlight-color: transparent;
-      transition: background 0.15s;
-    }
-    #pagination button:active:not(:disabled) { background: #e8f0fe; }
-    #pagination button:disabled { color: #999; }
-    #page-info { font-size: 13px; flex: 1; text-align: center; }
+
 
     #empty-msg { font-size: 15px; margin-top: 20px; text-align: center; padding: 24px 0; }
   }
@@ -182,17 +147,13 @@ html = """
   autocorrect="off" autocapitalize="off" spellcheck="false" />
 <div id="results-count"></div>
 <div id="results-list"></div>
-<div id="pagination" style="display:none">
-  <button id="btn-prev" onclick="changePage(-1)" disabled>&#8592; Prev</button>
-  <span id="page-info"></span>
-  <button id="btn-next" onclick="changePage(1)" disabled>Next &#8594;</button>
-</div>
+
 <div id="empty-msg" style="display:none">No results found. Try different keywords.</div>
 
 <script>
   const PARTS = PARTS_JSON_PLACEHOLDER;
-  const PER_PAGE = 20;
-  const MAX_RESULTS = 100;
+  const PER_PAGE = 15;
+  const MAX_RESULTS = 15;
 
   let currentResults = [];
   let currentPage = 1;
@@ -293,23 +254,16 @@ html = """
     const countEl = document.getElementById('results-count');
     const listEl = document.getElementById('results-list');
     const emptyEl = document.getElementById('empty-msg');
-    const prevBtn = document.getElementById('btn-prev');
-    const nextBtn = document.getElementById('btn-next');
-    const pageInfo = document.getElementById('page-info');
-    const paginationEl = document.getElementById('pagination');
-
     if (!query) {
       countEl.textContent = '';
       listEl.innerHTML = '';
       emptyEl.style.display = 'none';
-      paginationEl.style.display = 'none';
       return;
     }
     if (total === 0) {
       countEl.textContent = '';
       listEl.innerHTML = '';
       emptyEl.style.display = 'block';
-      paginationEl.style.display = 'none';
       return;
     }
     emptyEl.style.display = 'none';
@@ -321,29 +275,10 @@ html = """
       '</div>'
     ).join('');
 
-    if (totalPages > 1) {
-      paginationEl.style.display = 'flex';
-      pageInfo.textContent = 'Page ' + currentPage + ' of ' + totalPages;
-      prevBtn.disabled = currentPage <= 1;
-      nextBtn.disabled = currentPage >= totalPages;
-    } else {
-      paginationEl.style.display = 'none';
-    }
-    sendHeight();
+
   }
 
-  function sendHeight() {
-    // Give the DOM one frame to finish painting, then report exact content height
-    requestAnimationFrame(function() {
-      var h = document.documentElement.scrollHeight;
-      window.parent.postMessage({ type: 'streamlit:setFrameHeight', height: h }, '*');
-    });
-  }
 
-  function changePage(delta) {
-    currentPage += delta;
-    renderResults(document.getElementById('search-input').value);
-  }
 
   document.getElementById('search-input').addEventListener('input', function() {
     clearTimeout(debounceTimer);
@@ -351,8 +286,6 @@ html = """
     debounceTimer = setTimeout(() => doSearch(val), 200);
   });
 
-  // Set correct height on first load (just the search bar, no results yet)
-  sendHeight();
 
 </script>
 </body>
@@ -360,7 +293,7 @@ html = """
 """
 
 html = html.replace('PARTS_JSON_PLACEHOLDER', parts_json)
-components.html(html, height=200, scrolling=False)
+components.html(html, height=1150, scrolling=False)
 
 st.write("---")
 st.markdown(
