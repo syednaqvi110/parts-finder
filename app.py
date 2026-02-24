@@ -103,7 +103,7 @@ html = """
 <input id="search-input" type="text" placeholder="Type part number or description..." autofocus />
 <div id="results-count"></div>
 <div id="results-list"></div>
-<div id="pagination">
+<div id="pagination" style="display:none">
   <button id="btn-prev" onclick="changePage(-1)" disabled>&#8592; Prev</button>
   <span id="page-info"></span>
   <button id="btn-next" onclick="changePage(1)" disabled>Next &#8594;</button>
