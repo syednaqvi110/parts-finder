@@ -342,22 +342,13 @@ html = """
     debounceTimer = setTimeout(() => doSearch(val), 200);
   });
 
-  // Resize the iframe to match content so the outer page scrolls — no inner scrollbar
-  function resizeIframe() {
-    const h = document.body.scrollHeight;
-    window.parent.postMessage({ type: 'streamlit:setFrameHeight', height: h }, '*');
-  }
-  // Resize after every render and on load
-  const resizeObserver = new ResizeObserver(resizeIframe);
-  resizeObserver.observe(document.body);
-  window.addEventListener('load', resizeIframe);
 </script>
 </body>
 </html>
 """
 
 html = html.replace('PARTS_JSON_PLACEHOLDER', parts_json)
-components.html(html, height=400, scrolling=False)
+components.html(html, height=5000, scrolling=False)
 
 st.write("---")
 st.markdown(
