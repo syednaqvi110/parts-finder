@@ -199,6 +199,17 @@ html = """
   const PER_PAGE = 15;
   const MAX_RESULTS = 100;
 
+  // Dynamically size the iframe based on actual content after every render
+  // Uses postMessage to Streamlit — called via requestAnimationFrame so DOM is fully painted
+  function sendHeight() {
+    requestAnimationFrame(function() {
+      var h = document.body.offsetHeight + 32; // +32px buffer for safety
+      window.parent.postMessage({ type: 'streamlit:setFrameHeight', height: h }, '*');
+    });
+  }
+  // Fire on load immediately
+  window.addEventListener('load', function() { setTimeout(sendHeight, 100); });
+
   let currentResults = [];
   let currentPage = 1;
   let debounceTimer = null;
@@ -314,6 +325,7 @@ html = """
       listEl.innerHTML = '';
       emptyEl.style.display = 'none';
       paginationEl.style.display = 'none';
+      sendHeight();
       return;
     }
     if (total === 0) {
@@ -321,6 +333,7 @@ html = """
       listEl.innerHTML = '';
       emptyEl.style.display = 'block';
       paginationEl.style.display = 'none';
+      sendHeight();
       return;
     }
     emptyEl.style.display = 'none';
@@ -359,7 +372,7 @@ html = """
 """
 
 html = html.replace('PARTS_JSON_PLACEHOLDER', parts_json)
-components.html(html, height=1250, scrolling=False)
+components.html(html, height=1650, scrolling=False)
 
 st.write("---")
 st.markdown(
