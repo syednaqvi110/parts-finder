@@ -146,23 +146,42 @@ html = """
     const pn = part.part_number.toLowerCase();
     const desc = part.description.toLowerCase();
 
-    // Hyphen-normalized: "DEC PB-REG-A-E1" -> "DEC PB REG A E1"
-    // so typing "DEC PB REG" finds it even without hyphens
+    // Normalize hyphens: "DEC PB-REG-A-E1" -> "dec pb reg a e1"
     const pnNorm = pn.replace(/-/g, ' ');
     const qNorm = q.replace(/-/g, ' ');
 
-    if (q === pn) return 100;
-    if (pn.includes(q)) return 80;
-    if (pnNorm.includes(qNorm)) return 75;
-    if (desc.includes(q)) return 60;
+    // Tier 1: exact / full-phrase matches (always beat word-level matches)
+    if (q === pn)               return 1000;  // exact part number
+    if (pn.startsWith(q))       return 950;   // part number starts with query
+    if (pn.includes(q))         return 900;   // part number contains full query
+    if (pnNorm.startsWith(qNorm)) return 880; // normalized starts with
+    if (pnNorm.includes(qNorm)) return 850;   // normalized contains full phrase
+    if (desc.includes(q))       return 700;   // description contains full phrase
 
-    let score = 0;
-    const words = qNorm.split(/\\s+/).filter(w => w.length > 1);
+    // Tier 2: multi-word scoring
+    // Score based on what fraction of query words matched, and where they matched
+    const words = qNorm.split(/\s+/).filter(w => w.length > 0);
+    if (words.length === 0) return 0;
+
+    let pnMatches = 0;
+    let descMatches = 0;
     for (const word of words) {
-      if (pn.includes(word) || pnNorm.includes(word)) score += 40;
-      else if (desc.includes(word)) score += 20;
+      if (pn.includes(word) || pnNorm.includes(word)) pnMatches++;
+      else if (desc.includes(word)) descMatches++;
     }
-    return score;
+
+    const totalMatched = pnMatches + descMatches;
+    if (totalMatched === 0) return 0;
+
+    // Weight: part number matches worth more than description matches
+    // matchRatio ensures 3/3 words always beats 2/3 words
+    let score = (pnMatches / words.length) * 600
+              + (descMatches / words.length) * 400;
+
+    if (totalMatched === words.length) score += 200; // all words found bonus
+    if (pnMatches > descMatches)       score += 50;  // part-number-heavy bonus
+
+    return Math.round(score);
   }
 
   function doSearch(query) {
