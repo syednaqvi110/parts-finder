@@ -1,19 +1,16 @@
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
-import re
 import os
-from typing import List, Tuple
+import json
 
 # ============================================================================
 # CONFIGURATION
 # ============================================================================
 PARTS_DATA_FILE = "parts_data.csv"
-RESULTS_PER_PAGE = 20
-MAX_RESULTS = 100
 
 # ============================================================================
-# STREAMLIT SETUP
+# PAGE CONFIG
 # ============================================================================
 st.set_page_config(
     page_title="Parts Finder",
@@ -22,7 +19,6 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# CSS only — scripts in st.markdown don't execute in Streamlit (React strips them)
 st.markdown("""
 <style>
     #MainMenu {visibility: hidden;}
@@ -30,50 +26,11 @@ st.markdown("""
     header {visibility: hidden;}
     .stDeployButton {display: none;}
     .stDecoration {display: none;}
-
-    .highlight {
-        background-color: #ffff99;
-        font-weight: bold;
-    }
-
-    .search-result {
-        border: 1px solid #ddd;
-        padding: 10px;
-        margin: 8px 0;
-        background-color: #f9f9f9;
-    }
-
-    .part-number {
-        font-weight: bold;
-        color: #0066cc;
-        margin-bottom: 5px;
-    }
-
-    .part-description {
-        color: #333;
-    }
-
-    /* Collapse the hidden trigger button so it takes no space visually */
-    div[data-testid="stTextInput"] + div[data-testid="stButton"] {
-        height: 0 !important;
-        overflow: hidden !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# SESSION STATE
-# ============================================================================
-def init_session_state():
-    if 'current_page' not in st.session_state:
-        st.session_state.current_page = 1
-    if 'last_search_query' not in st.session_state:
-        st.session_state.last_search_query = ""
-
-# ============================================================================
-# DATA LOADING
+# DATA LOADING (Python side — load once, pass to JS)
 # ============================================================================
 @st.cache_data(show_spinner=False)
 def load_parts_data():
@@ -88,7 +45,6 @@ def load_parts_data():
             'inventory item id': 'part_number',
             'inv item name': 'description'
         }
-
         for old_name, new_name in column_mapping.items():
             for col in df.columns:
                 if old_name in col.lower():
@@ -104,7 +60,6 @@ def load_parts_data():
         df = df[['part_number', 'description']]
         df['part_number'] = df['part_number'].astype(str).str.strip()
         df['description'] = df['description'].astype(str).str.strip()
-
         df = df[df['part_number'] != '**NO INV PART']
         df = df[(df['part_number'].str.len() > 0) & (df['description'].str.len() > 0)]
         df = df[df['part_number'] != 'nan']
@@ -113,215 +68,247 @@ def load_parts_data():
         df = df.drop_duplicates(subset=['part_number'], keep='first')
         df = df.reset_index(drop=True)
 
-        return df, f"Loaded {len(df)} parts"
+        parts_list = df[['part_number', 'description']].to_dict(orient='records')
+        return parts_list, f"Loaded {len(parts_list)} parts"
 
     except Exception as e:
         return None, f"Error: {str(e)}"
 
-# ============================================================================
-# SEARCH
-# ============================================================================
-def search_parts(query: str, df: pd.DataFrame) -> List[Tuple]:
-    if not query or not query.strip() or df is None or df.empty:
-        return []
-
-    query_lower = query.lower().strip()
-    results = []
-
-    for idx, row in df.iterrows():
-        part_num = row['part_number'].lower()
-        desc = row['description'].lower()
-        score = 0
-
-        if query_lower == part_num:
-            score = 100
-        elif query_lower in part_num:
-            score = 80
-        elif query_lower in desc:
-            score = 60
-        else:
-            for word in query_lower.split():
-                if len(word) > 2:
-                    if word in part_num:
-                        score += 40
-                    elif word in desc:
-                        score += 20
-
-        if score > 0:
-            results.append((idx, row['part_number'], row['description'], score))
-
-    results.sort(key=lambda x: x[3], reverse=True)
-    return results[:MAX_RESULTS]
 
 # ============================================================================
-# DISPLAY FUNCTIONS
+# MAIN
 # ============================================================================
-def highlight_text(text: str, query: str) -> str:
-    if not query or not query.strip():
-        return text
-    import html
-    escaped_text = html.escape(text)
-    for word in query.lower().split():
-        if len(word) > 2:
-            pattern = re.compile(f'({re.escape(word)})', re.IGNORECASE)
-            escaped_text = pattern.sub(r'<span class="highlight">\1</span>', escaped_text)
-    return escaped_text
+st.markdown("<h1 style='text-align: center;'>Parts Finder</h1>", unsafe_allow_html=True)
 
-def show_search_result(part_number: str, description: str, query: str):
-    highlighted_part = highlight_text(part_number, query)
-    highlighted_desc = highlight_text(description, query)
-    st.markdown(f"""
-    <div class="search-result">
-        <div class="part-number">{highlighted_part}</div>
-        <div class="part-description">{highlighted_desc}</div>
-    </div>
-    """, unsafe_allow_html=True)
+parts_list, message = load_parts_data()
 
-def show_pagination(current_page: int, total_pages: int, total_results: int, key_prefix: str = ""):
-    if total_pages <= 1:
-        return current_page
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col1:
-        if current_page > 1 and st.button("← Previous", key=f"{key_prefix}_prev"):
-            return current_page - 1
-    with col2:
-        st.write(f"Page {current_page} of {total_pages} ({total_results} results)")
-    with col3:
-        if current_page < total_pages and st.button("Next →", key=f"{key_prefix}_next"):
-            return current_page + 1
-    return current_page
+if parts_list is None:
+    st.error(message)
+    st.stop()
 
-# ============================================================================
-# LIVE SEARCH JS INJECTOR
-# components.html() is the ONLY Streamlit method that actually executes JS.
-# It renders in a tiny hidden iframe; we use window.parent to reach the main page.
-# ============================================================================
-def inject_live_search_js():
-    components.html("""
-    <script>
-    (function() {
-        var debounceTimer = null;
+st.success(message)
 
-        function clickTriggerButton() {
-            var doc = window.parent.document;
-            // The trigger button sits immediately after the text input container
-            var textInput = doc.querySelector('div[data-testid="stTextInput"]');
-            if (!textInput) return;
-            var sibling = textInput.nextElementSibling;
-            while (sibling) {
-                var btn = sibling.querySelector('button');
-                if (btn) {
-                    btn.click();
-                    return;
-                }
-                sibling = sibling.nextElementSibling;
-            }
-        }
+# Embed all parts as JSON and run the entire search UI in JS.
+# No Streamlit reruns involved — filtering happens 100% client-side on every keystroke.
+parts_json = json.dumps(parts_list)
 
-        function attachToInputs() {
-            var doc = window.parent.document;
-            var inputs = doc.querySelectorAll('input[type="text"]');
-            inputs.forEach(function(input) {
-                if (input._liveSearchAttached) return;
-                input._liveSearchAttached = true;
-                input.addEventListener('input', function() {
-                    clearTimeout(debounceTimer);
-                    debounceTimer = setTimeout(clickTriggerButton, 300);
-                });
-            });
-        }
+components.html(f"""
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: sans-serif; padding: 12px; background: transparent; }}
 
-        // Re-attach after every Streamlit rerender (MutationObserver on parent body)
-        var observer = new MutationObserver(function() {
-            attachToInputs();
-        });
-        observer.observe(window.parent.document.body, { childList: true, subtree: true });
+  #search-input {{
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s;
+  }}
+  #search-input:focus {{ border-color: #0066cc; box-shadow: 0 0 0 2px rgba(0,102,204,0.15); }}
 
-        // Initial attach
-        setTimeout(attachToInputs, 500);
-    })();
-    </script>
-    """, height=0)
+  #results-count {{
+    margin: 10px 0 6px;
+    font-size: 13px;
+    color: #555;
+  }}
 
-# ============================================================================
-# MAIN APPLICATION
-# ============================================================================
-def main():
-    init_session_state()
+  .result-card {{
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 10px 12px;
+    margin-bottom: 7px;
+    background: #f9f9f9;
+  }}
+  .part-number {{
+    font-weight: bold;
+    color: #0066cc;
+    font-size: 14px;
+    margin-bottom: 3px;
+  }}
+  .part-desc {{
+    color: #333;
+    font-size: 13px;
+  }}
+  .highlight {{ background: #ffff99; font-weight: bold; }}
 
-    st.markdown("<h1 style='text-align: center;'>Parts Finder</h1>", unsafe_allow_html=True)
+  #pagination {{
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #555;
+  }}
+  #pagination button {{
+    padding: 5px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-size: 13px;
+  }}
+  #pagination button:disabled {{ opacity: 0.4; cursor: default; }}
+  #pagination button:hover:not(:disabled) {{ background: #f0f0f0; }}
 
-    df, message = load_parts_data()
-    if df is None:
-        st.error(message)
-        return
-    else:
-        st.success(message)
+  #empty-msg {{ color: #888; font-size: 14px; margin-top: 12px; }}
+</style>
+</head>
+<body>
 
-    # Native text_input — no iframe, no focus loss on backspace
-    st.text_input(
-        "Search parts:",
-        placeholder="Type part number or description...",
-        key="search_input",
-    )
+<input id="search-input" type="text" placeholder="Type part number or description..." autofocus />
+<div id="results-count"></div>
+<div id="results-list"></div>
+<div id="pagination">
+  <button id="btn-prev" onclick="changePage(-1)" disabled>← Prev</button>
+  <span id="page-info"></span>
+  <button id="btn-next" onclick="changePage(1)" disabled>Next →</button>
+</div>
+<div id="empty-msg" style="display:none">No results found. Try different keywords.</div>
 
-    # Hidden trigger button — JS clicks this after 300ms debounce to force a rerun.
-    # CSS collapses it to height:0. JS .click() still works (only display:none blocks it).
-    st.button("search_trigger", key="search_trigger")
+<script>
+  const PARTS = {parts_json};
+  const PER_PAGE = 20;
+  const MAX_RESULTS = 100;
 
-    # Inject JS via components.html (actually executes, unlike st.markdown scripts)
-    inject_live_search_js()
+  let currentResults = [];
+  let currentPage = 1;
+  let debounceTimer = null;
 
-    # After the button click triggers a rerun, session_state.search_input
-    # already holds the latest typed value — Streamlit syncs all widget states first.
-    search_query = st.session_state.get("search_input", "").strip()
+  function escapeHtml(str) {{
+    return str
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }}
 
-    if search_query != st.session_state.last_search_query:
-        st.session_state.current_page = 1
-        st.session_state.last_search_query = search_query
+  function highlightText(text, query) {{
+    if (!query) return escapeHtml(text);
+    const escaped = escapeHtml(text);
+    const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+    if (!words.length) return escaped;
+    const pattern = new RegExp('(' + words.map(w =>
+      w.replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&')
+    ).join('|') + ')', 'gi');
+    return escaped.replace(pattern, '<span class="highlight">$1</span>');
+  }}
 
-    if not search_query:
-        pass
-    else:
-        results = search_parts(search_query, df)
+  function scoreResult(part, query) {{
+    const q = query.toLowerCase().trim();
+    const pn = part.part_number.toLowerCase();
+    const desc = part.description.toLowerCase();
 
-        if not results:
-            st.info("No results found. Try different keywords.")
-        else:
-            total_results = len(results)
-            total_pages = (total_results + RESULTS_PER_PAGE - 1) // RESULTS_PER_PAGE
-            current_page = min(st.session_state.current_page, total_pages)
+    if (q === pn) return 100;
+    if (pn.includes(q)) return 80;
+    if (desc.includes(q)) return 60;
 
-            new_page = show_pagination(current_page, total_pages, total_results, "top")
-            if new_page != current_page:
-                st.session_state.current_page = new_page
-                st.rerun()
+    let score = 0;
+    const words = q.split(/\s+/).filter(w => w.length > 2);
+    for (const word of words) {{
+      if (pn.includes(word)) score += 40;
+      else if (desc.includes(word)) score += 20;
+    }}
+    return score;
+  }}
 
-            start_idx = (current_page - 1) * RESULTS_PER_PAGE
-            end_idx = min(start_idx + RESULTS_PER_PAGE, total_results)
+  function doSearch(query) {{
+    const q = query.trim();
+    if (!q) {{
+      currentResults = [];
+      currentPage = 1;
+      renderResults(q);
+      return;
+    }}
 
-            for _, part_number, description, _ in results[start_idx:end_idx]:
-                show_search_result(part_number, description, search_query)
+    const scored = [];
+    for (const part of PARTS) {{
+      const s = scoreResult(part, q);
+      if (s > 0) scored.push({{ part, score: s }});
+    }}
+    scored.sort((a, b) => b.score - a.score);
+    currentResults = scored.slice(0, MAX_RESULTS).map(x => x.part);
+    currentPage = 1;
+    renderResults(q);
+  }}
 
-            if total_pages > 1:
-                st.write("")
-                new_page = show_pagination(current_page, total_pages, total_results, "bottom")
-                if new_page != current_page:
-                    st.session_state.current_page = new_page
-                    st.rerun()
+  function renderResults(query) {{
+    const total = currentResults.length;
+    const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+    currentPage = Math.min(currentPage, totalPages);
 
-# ============================================================================
-# CONTACT INFO
-# ============================================================================
-def show_contact():
-    st.write("")
-    st.write("---")
-    st.markdown(
-        "<p style='text-align: center;'>For support or feedback: "
-        "<a href='mailto:Syed.naqvi@bgis.com'>Syed.naqvi@bgis.com</a></p>",
-        unsafe_allow_html=True
-    )
+    const start = (currentPage - 1) * PER_PAGE;
+    const end = Math.min(start + PER_PAGE, total);
+    const pageItems = currentResults.slice(start, end);
 
-if __name__ == "__main__":
-    main()
-    show_contact()
+    const countEl = document.getElementById('results-count');
+    const listEl = document.getElementById('results-list');
+    const emptyEl = document.getElementById('empty-msg');
+    const prevBtn = document.getElementById('btn-prev');
+    const nextBtn = document.getElementById('btn-next');
+    const pageInfo = document.getElementById('page-info');
+    const paginationEl = document.getElementById('pagination');
+
+    if (!query) {{
+      countEl.textContent = '';
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'none';
+      paginationEl.style.display = 'none';
+      return;
+    }}
+
+    if (total === 0) {{
+      countEl.textContent = '';
+      listEl.innerHTML = '';
+      emptyEl.style.display = 'block';
+      paginationEl.style.display = 'none';
+      return;
+    }}
+
+    emptyEl.style.display = 'none';
+    countEl.textContent = `${{total}} result${{total !== 1 ? 's' : ''}} found`;
+
+    listEl.innerHTML = pageItems.map(part => `
+      <div class="result-card">
+        <div class="part-number">${{highlightText(part.part_number, query)}}</div>
+        <div class="part-desc">${{highlightText(part.description, query)}}</div>
+      </div>
+    `).join('');
+
+    if (totalPages > 1) {{
+      paginationEl.style.display = 'flex';
+      pageInfo.textContent = `Page ${{currentPage}} of ${{totalPages}}`;
+      prevBtn.disabled = currentPage <= 1;
+      nextBtn.disabled = currentPage >= totalPages;
+    }} else {{
+      paginationEl.style.display = 'none';
+    }}
+  }}
+
+  function changePage(delta) {{
+    currentPage += delta;
+    renderResults(document.getElementById('search-input').value);
+    window.scrollTo(0, 0);
+  }}
+
+  document.getElementById('search-input').addEventListener('input', function() {{
+    clearTimeout(debounceTimer);
+    const val = this.value;
+    debounceTimer = setTimeout(() => doSearch(val), 200);
+  }});
+</script>
+</body>
+</html>
+""", height=700, scrolling=True)
+
+# Contact footer (outside the component)
+st.write("---")
+st.markdown(
+    "<p style='text-align: center;'>For support or feedback: "
+    "<a href='mailto:Syed.naqvi@bgis.com'>Syed.naqvi@bgis.com</a></p>",
+    unsafe_allow_html=True
+)
