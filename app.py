@@ -68,39 +68,118 @@ html = """
 <!DOCTYPE html>
 <html>
 <head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: sans-serif; padding: 12px; background: transparent; }
-  #search-input {
-    width: 100%; padding: 10px 14px; font-size: 16px;
-    border: 1px solid #ccc; border-radius: 6px; outline: none;
-    transition: border-color 0.2s;
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    padding: 12px;
+    background: transparent;
   }
-  #search-input:focus { border-color: #0066cc; box-shadow: 0 0 0 2px rgba(0,102,204,0.15); }
+
+  /* === BASE STYLES (desktop) — unchanged from original === */
+  #search-input {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 16px;
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s;
+    -webkit-appearance: none;
+  }
+  #search-input:focus {
+    border-color: #0066cc;
+    box-shadow: 0 0 0 2px rgba(0,102,204,0.15);
+  }
+
   #results-count { margin: 10px 0 6px; font-size: 13px; color: #555; }
+
   .result-card {
-    border: 1px solid #ddd; border-radius: 5px;
-    padding: 10px 12px; margin-bottom: 7px; background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 10px 12px;
+    margin-bottom: 7px;
+    background: #f9f9f9;
   }
   .part-number { font-weight: bold; color: #0066cc; font-size: 14px; margin-bottom: 3px; }
   .part-desc { color: #333; font-size: 13px; }
   .highlight { background: #ffff99; font-weight: bold; }
+
   #pagination {
-    display: flex; align-items: center; gap: 10px;
-    margin-top: 10px; font-size: 13px; color: #555;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    font-size: 13px;
+    color: #555;
   }
   #pagination button {
-    padding: 5px 12px; border: 1px solid #ccc; border-radius: 4px;
-    background: white; cursor: pointer; font-size: 13px;
+    padding: 5px 12px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: white;
+    cursor: pointer;
+    font-size: 13px;
   }
   #pagination button:disabled { opacity: 0.4; cursor: default; }
   #pagination button:hover:not(:disabled) { background: #f0f0f0; }
+  #page-info { font-size: 13px; color: #555; }
+
   #empty-msg { color: #888; font-size: 14px; margin-top: 12px; }
+
+  /* === MOBILE OVERRIDES — only on screens narrower than 600px === */
+  @media (max-width: 600px) {
+    #search-input {
+      padding: 13px 16px;
+      font-size: 16px;      /* keeps iOS from auto-zooming on focus */
+      border-radius: 10px;
+    }
+    #search-input:focus {
+      box-shadow: 0 0 0 3px rgba(0,102,204,0.15);
+    }
+
+    #results-count { margin: 12px 0 8px; }
+
+    .result-card {
+      border-radius: 10px;
+      padding: 14px 16px;
+      margin-bottom: 10px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      -webkit-tap-highlight-color: rgba(0,102,204,0.08);
+    }
+    .part-number { font-size: 15px; margin-bottom: 5px; }
+    .part-desc   { font-size: 14px; line-height: 1.4; }
+    .highlight   { border-radius: 2px; }
+
+    #pagination {
+      justify-content: space-between;
+      margin-top: 14px;
+      padding: 4px 0 8px;
+    }
+    #pagination button {
+      min-height: 44px;     /* Apple HIG minimum tap target */
+      padding: 0 20px;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      color: #0066cc;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.15s;
+    }
+    #pagination button:active:not(:disabled) { background: #e8f0fe; }
+    #pagination button:disabled { color: #999; }
+    #page-info { font-size: 13px; flex: 1; text-align: center; }
+
+    #empty-msg { font-size: 15px; margin-top: 20px; text-align: center; padding: 24px 0; }
+  }
 </style>
 </head>
 <body>
 
-<input id="search-input" type="text" placeholder="Type part number or description" autofocus />
+<input id="search-input" type="search" inputmode="search"
+  placeholder="Type part number or description..." autofocus autocomplete="off"
+  autocorrect="off" autocapitalize="off" spellcheck="false" />
 <div id="results-count"></div>
 <div id="results-list"></div>
 <div id="pagination" style="display:none">
