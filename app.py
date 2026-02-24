@@ -100,7 +100,7 @@ html = """
 </head>
 <body>
 
-<input id="search-input" type="text" placeholder="Type part number or description..." autofocus />
+<input id="search-input" type="text" placeholder="Type part number or description" autofocus />
 <div id="results-count"></div>
 <div id="results-list"></div>
 <div id="pagination" style="display:none">
